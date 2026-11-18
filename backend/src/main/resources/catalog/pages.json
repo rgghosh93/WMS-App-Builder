@@ -1,0 +1,175 @@
+[
+  {
+    "id": "master-data",
+    "name": "Master Data",
+    "description": "Facilities, locations, items and trading partners",
+    "icon": "database",
+    "pages": [
+      { "id": "facilities", "title": "Facilities", "description": "Warehouses and their settings", "route": "/master-data/facilities", "status": "PLANNED" },
+      { "id": "zones", "title": "Zones", "description": "Storage, pick and staging zones", "route": "/master-data/zones", "status": "PLANNED" },
+      { "id": "locations", "title": "Locations", "description": "Bins, slots and their dimensions and capacity", "route": "/master-data/locations", "status": "PLANNED" },
+      { "id": "items", "title": "Items", "description": "SKUs, lot, serial and expiry attributes", "route": "/master-data/items", "status": "PLANNED" },
+      { "id": "units-of-measure", "title": "Units of Measure", "description": "Eaches, cases, pallets and conversions", "route": "/master-data/units-of-measure", "status": "PLANNED" },
+      { "id": "clients", "title": "Clients", "description": "Inventory owners and 3PL clients", "route": "/master-data/clients", "status": "PLANNED" },
+      { "id": "carriers", "title": "Carriers", "description": "Carriers and shipping services", "route": "/master-data/carriers", "status": "PLANNED" },
+      { "id": "vendors", "title": "Vendors", "description": "Suppliers that ship to the warehouse", "route": "/master-data/vendors", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "inbound",
+    "name": "Inbound",
+    "description": "Expected receipts and receiving",
+    "icon": "inbound",
+    "pages": [
+      { "id": "asns", "title": "ASNs", "description": "Advance shipping notices from vendors", "route": "/inbound/asns", "status": "PLANNED" },
+      { "id": "purchase-orders", "title": "Purchase Orders", "description": "Open purchase orders to receive against", "route": "/inbound/purchase-orders", "status": "PLANNED" },
+      { "id": "receiving", "title": "Receiving", "description": "Receive goods and create LPNs", "route": "/inbound/receiving", "status": "PLANNED" },
+      { "id": "quality-hold", "title": "Quality Hold", "description": "Received goods waiting for QC", "route": "/inbound/quality-hold", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "putaway",
+    "name": "Put-away",
+    "description": "Moving received goods into storage",
+    "icon": "putaway",
+    "pages": [
+      { "id": "putaway-tasks", "title": "Put-away Tasks", "description": "Directed put-away work", "route": "/putaway/tasks", "status": "PLANNED" },
+      { "id": "putaway-rules", "title": "Put-away Rules", "description": "How the system chooses storage locations", "route": "/putaway/rules", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "inventory",
+    "name": "Inventory",
+    "description": "Stock on hand and inventory control",
+    "icon": "inventory",
+    "pages": [
+      { "id": "inventory-inquiry", "title": "Inventory Inquiry", "description": "On-hand stock by location, LPN and lot", "route": "/inventory/inquiry", "status": "PLANNED" },
+      { "id": "warehouse-map", "title": "Warehouse Map", "description": "Floor plan with utilization and task layers", "route": "/inventory/map", "status": "PLANNED" },
+      { "id": "inventory-moves", "title": "Inventory Moves", "description": "Move stock between locations", "route": "/inventory/moves", "status": "PLANNED" },
+      { "id": "adjustments", "title": "Adjustments", "description": "Quantity adjustments with reason codes", "route": "/inventory/adjustments", "status": "PLANNED" },
+      { "id": "inventory-holds", "title": "Holds", "description": "Place and release inventory holds", "route": "/inventory/holds", "status": "PLANNED" },
+      { "id": "cycle-counts", "title": "Cycle Counts", "description": "Plan and record cycle counts", "route": "/inventory/cycle-counts", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "outbound",
+    "name": "Outbound",
+    "description": "Customer orders, allocation and waves",
+    "icon": "outbound",
+    "pages": [
+      { "id": "orders", "title": "Orders", "description": "Outbound customer orders", "route": "/outbound/orders", "status": "PLANNED" },
+      { "id": "allocation", "title": "Allocation", "description": "Reserve stock for orders by rule", "route": "/outbound/allocation", "status": "PLANNED" },
+      { "id": "waves", "title": "Waves", "description": "Group orders into waves for release", "route": "/outbound/waves", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "picking",
+    "name": "Picking",
+    "description": "Picking work on desktop and RF",
+    "icon": "picking",
+    "pages": [
+      { "id": "pick-tasks", "title": "Pick Tasks", "description": "Discrete, batch and zone picks", "route": "/picking/tasks", "status": "PLANNED" },
+      { "id": "short-picks", "title": "Short Picks", "description": "Resolve picks that came up short", "route": "/picking/short-picks", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "pack-ship",
+    "name": "Pack and Ship",
+    "description": "Packing, labels and shipment confirmation",
+    "icon": "shipping",
+    "pages": [
+      { "id": "packing", "title": "Packing", "description": "Pack station work and cartonization", "route": "/pack-ship/packing", "status": "PLANNED" },
+      { "id": "shipments", "title": "Shipments", "description": "Shipments, labels and ship confirm", "route": "/pack-ship/shipments", "status": "PLANNED" },
+      { "id": "manifests", "title": "Manifests", "description": "Carrier manifests and close-out", "route": "/pack-ship/manifests", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "replenishment",
+    "name": "Replenishment",
+    "description": "Keeping pick locations stocked",
+    "icon": "replenishment",
+    "pages": [
+      { "id": "replenishment-tasks", "title": "Replenishment Tasks", "description": "Open replenishment work", "route": "/replenishment/tasks", "status": "PLANNED" },
+      { "id": "replenishment-rules", "title": "Replenishment Rules", "description": "Min/max and demand-based settings", "route": "/replenishment/rules", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "tasks",
+    "name": "Task Management",
+    "description": "All warehouse work in one queue",
+    "icon": "tasks",
+    "pages": [
+      { "id": "task-queue", "title": "Task Queue", "description": "Prioritize and assign warehouse tasks", "route": "/tasks/queue", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "returns",
+    "name": "Returns",
+    "description": "Customer returns and disposition",
+    "icon": "returns",
+    "pages": [
+      { "id": "rma-receiving", "title": "Returns Receiving", "description": "Receive returns against an RMA", "route": "/returns/receiving", "status": "PLANNED" },
+      { "id": "disposition", "title": "Disposition", "description": "Restock, quarantine or scrap returns", "route": "/returns/disposition", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "labor",
+    "name": "Labor",
+    "description": "Workforce productivity",
+    "icon": "labor",
+    "pages": [
+      { "id": "productivity", "title": "Productivity", "description": "Productivity by user and task type", "route": "/labor/productivity", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "yard-dock",
+    "name": "Yard and Dock",
+    "description": "Doors, appointments and trailers",
+    "icon": "yard",
+    "pages": [
+      { "id": "dock-schedule", "title": "Dock Schedule", "description": "Door appointments by time", "route": "/yard-dock/schedule", "status": "PLANNED" },
+      { "id": "yard", "title": "Yard", "description": "Trailer check-in, check-out and moves", "route": "/yard-dock/yard", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "billing",
+    "name": "Billing",
+    "description": "3PL storage and activity billing",
+    "icon": "billing",
+    "pages": [
+      { "id": "client-billing", "title": "Client Billing", "description": "Billable storage and activity per client", "route": "/billing/clients", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "reporting",
+    "name": "Reporting",
+    "description": "Dashboards and reports",
+    "icon": "reporting",
+    "pages": [
+      { "id": "dashboards", "title": "Dashboards", "description": "Operational dashboards", "route": "/reporting/dashboards", "status": "PLANNED" },
+      { "id": "reports", "title": "Reports", "description": "Standard reports and exports", "route": "/reporting/reports", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "integration",
+    "name": "Integration",
+    "description": "Connections to other systems",
+    "icon": "integration",
+    "pages": [
+      { "id": "integrations", "title": "Integrations", "description": "APIs, webhooks and connectors", "route": "/integration/connections", "status": "PLANNED" },
+      { "id": "file-imports", "title": "File Imports", "description": "CSV and EDI file imports", "route": "/integration/file-imports", "status": "PLANNED" }
+    ]
+  },
+  {
+    "id": "administration",
+    "name": "Administration",
+    "description": "Users, security and templates",
+    "icon": "admin",
+    "pages": [
+      { "id": "users", "title": "Users", "description": "User accounts and facility access", "route": "/admin/users", "status": "PLANNED" },
+      { "id": "roles", "title": "Roles", "description": "Roles and permissions", "route": "/admin/roles", "status": "PLANNED" },
+      { "id": "audit-log", "title": "Audit Log", "description": "Who changed what, and when", "route": "/admin/audit-log", "status": "PLANNED" },
+      { "id": "label-templates", "title": "Label Templates", "description": "Label and document templates", "route": "/admin/label-templates", "status": "PLANNED" }
+    ]
+  }
+]
