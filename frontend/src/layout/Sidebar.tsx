@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
 import { filterModules } from '../api/navigation';
 import { useNavigation } from '../navigation/NavigationContext';
@@ -11,6 +11,14 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate: () =>
   const { state } = useNavigation();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { pathname } = useLocation();
+
+  // Open the group that holds the current page, so it shows as selected.
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    const active = state.modules.find((m) => m.pages.some((p) => p.status === 'AVAILABLE' && p.route === pathname));
+    if (active) setExpanded((current) => (current.has(active.id) ? current : new Set(current).add(active.id)));
+  }, [pathname, state]);
 
   const toggle = (id: string) =>
     setExpanded((current) => {

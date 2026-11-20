@@ -26,6 +26,20 @@ cd frontend && npm install && npm run dev
 
 Then open http://localhost:5173.
 
+## Database
+
+Local dev uses an embedded H2 database in PostgreSQL mode, saved under `backend/data/`
+(git-ignored). Flyway migrations in `backend/src/main/resources/db/migration` own the schema.
+On first start with an empty database, 144 demo storage locations are loaded
+(`wms.demo-data.enabled=true`). Delete `backend/data/` to start fresh.
+
+To run against PostgreSQL instead, start the backend with the `postgres` profile and set
+`WMS_DB_URL`, `WMS_DB_USER`, `WMS_DB_PASSWORD`:
+
+```bash
+cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
+```
+
 ## Tests
 
 ```bash

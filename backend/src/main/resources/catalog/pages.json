@@ -7,9 +7,11 @@
     "pages": [
       { "id": "facilities", "title": "Facilities", "description": "Warehouses and their settings", "route": "/master-data/facilities", "status": "PLANNED" },
       { "id": "zones", "title": "Zones", "description": "Storage, pick and staging zones", "route": "/master-data/zones", "status": "PLANNED" },
-      { "id": "locations", "title": "Locations", "description": "Bins, slots and their dimensions and capacity", "route": "/master-data/locations", "status": "PLANNED" },
-      { "id": "items", "title": "Items", "description": "SKUs, lot, serial and expiry attributes", "route": "/master-data/items", "status": "PLANNED" },
-      { "id": "units-of-measure", "title": "Units of Measure", "description": "Eaches, cases, pallets and conversions", "route": "/master-data/units-of-measure", "status": "PLANNED" },
+      { "id": "locations", "title": "Locations", "description": "Storage locations, their identifiers and dimensions", "route": "/master-data/locations", "status": "AVAILABLE" },
+      { "id": "items", "title": "Items", "description": "SKUs, barcodes, tracking and unit dimensions", "route": "/master-data/items", "status": "AVAILABLE" },
+      { "id": "container-types", "title": "Container Types", "description": "Pallets, cartons, totes, bins and their sizes", "route": "/master-data/container-types", "status": "AVAILABLE" },
+      { "id": "containers", "title": "Containers", "description": "Permanent totes, bins and other containers, by LPN", "route": "/master-data/containers", "status": "AVAILABLE" },
+      { "id": "units-of-measure", "title": "Units of Measure", "description": "Eaches, inner packs, cases and pallets", "route": "/master-data/units-of-measure", "status": "AVAILABLE" },
       { "id": "clients", "title": "Clients", "description": "Inventory owners and 3PL clients", "route": "/master-data/clients", "status": "PLANNED" },
       { "id": "carriers", "title": "Carriers", "description": "Carriers and shipping services", "route": "/master-data/carriers", "status": "PLANNED" },
       { "id": "vendors", "title": "Vendors", "description": "Suppliers that ship to the warehouse", "route": "/master-data/vendors", "status": "PLANNED" }
@@ -43,7 +45,8 @@
     "description": "Stock on hand and inventory control",
     "icon": "inventory",
     "pages": [
-      { "id": "inventory-inquiry", "title": "Inventory Inquiry", "description": "On-hand stock by location, LPN and lot", "route": "/inventory/inquiry", "status": "PLANNED" },
+      { "id": "inventory-by-location", "title": "Inventory by Location", "description": "What each location holds: items, LPNs and what is inside them", "route": "/inventory/by-location", "status": "AVAILABLE" },
+      { "id": "inventory-by-container", "title": "Inventory by Container", "description": "Every LPN holding stock, where it is and what is inside it", "route": "/inventory/by-container", "status": "AVAILABLE" },
       { "id": "warehouse-map", "title": "Warehouse Map", "description": "Floor plan with utilization and task layers", "route": "/inventory/map", "status": "PLANNED" },
       { "id": "inventory-moves", "title": "Inventory Moves", "description": "Move stock between locations", "route": "/inventory/moves", "status": "PLANNED" },
       { "id": "adjustments", "title": "Adjustments", "description": "Quantity adjustments with reason codes", "route": "/inventory/adjustments", "status": "PLANNED" },
@@ -57,8 +60,8 @@
     "description": "Customer orders, allocation and waves",
     "icon": "outbound",
     "pages": [
-      { "id": "orders", "title": "Orders", "description": "Outbound customer orders", "route": "/outbound/orders", "status": "PLANNED" },
-      { "id": "allocation", "title": "Allocation", "description": "Reserve stock for orders by rule", "route": "/outbound/allocation", "status": "PLANNED" },
+      { "id": "orders", "title": "Orders", "description": "Customer orders, their allocation and pick tasks", "route": "/outbound/orders", "status": "AVAILABLE" },
+      { "id": "allocations", "title": "Allocations", "description": "Stock reserved for orders, where it is and its pick task", "route": "/outbound/allocations", "status": "AVAILABLE" },
       { "id": "waves", "title": "Waves", "description": "Group orders into waves for release", "route": "/outbound/waves", "status": "PLANNED" }
     ]
   },
@@ -68,7 +71,7 @@
     "description": "Picking work on desktop and RF",
     "icon": "picking",
     "pages": [
-      { "id": "pick-tasks", "title": "Pick Tasks", "description": "Discrete, batch and zone picks", "route": "/picking/tasks", "status": "PLANNED" },
+      { "id": "pick-tasks", "title": "Pick Tasks", "description": "Picks created by allocation, by location and LPN", "route": "/picking/tasks", "status": "AVAILABLE" },
       { "id": "short-picks", "title": "Short Picks", "description": "Resolve picks that came up short", "route": "/picking/short-picks", "status": "PLANNED" }
     ]
   },

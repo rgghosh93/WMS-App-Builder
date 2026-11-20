@@ -12,3 +12,6 @@ frontend/dist/
 *.iml
 .DS_Store
 Thumbs.db
+
+# Local dev database
+backend/data/
