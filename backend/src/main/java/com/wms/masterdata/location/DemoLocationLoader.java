@@ -24,6 +24,7 @@ import com.wms.common.measure.WeightUom;
  * <ul>
  *   <li>RS = pallet reserve: 48 x 40 x 60 in, one pallet of one SKU, 2,500 lb</li>
  *   <li>BK = shelving: 24 x 24 x 18 in, up to 4 SKUs and 500 units, 250 lb</li>
+ *   <li>PACK = four pack stations</li>
  * </ul>
  */
 @Component
@@ -45,6 +46,7 @@ public class DemoLocationLoader implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (repository.count() > 0) {
             backfillCapacity();
+            addPackStations();
             return;
         }
         List<Location> locations = new ArrayList<>();
@@ -76,6 +78,29 @@ public class DemoLocationLoader implements ApplicationRunner {
         }
         repository.saveAll(locations);
         log.info("Loaded {} demo storage locations", locations.size());
+        addPackStations();
+    }
+
+    /** Four pack stations, added to the demo warehouse if it has none yet. */
+    private void addPackStations() {
+        boolean demoWarehouse = repository.findByLocationId(AREA + "-RS-01-01-A-01").isPresent();
+        if (!demoWarehouse || repository.existsByType(LocationType.PACKING)) {
+            return;
+        }
+        for (int n = 1; n <= 4; n++) {
+            Location l = new Location(UUID.randomUUID());
+            l.setType(LocationType.PACKING);
+            l.setArea(AREA);
+            l.setZone("PACK");
+            l.setPosition("%02d".formatted(n));
+            l.setLocationId(String.join("-", l.getArea(), l.getZone(), l.getPosition()));
+            l.setWidth(new BigDecimal("72.00"));
+            l.setDepth(new BigDecimal("36.00"));
+            l.setHeight(new BigDecimal("36.00"));
+            l.setDimensionUom(DimensionUom.IN);
+            repository.save(l);
+        }
+        log.info("Loaded 4 demo pack stations");
     }
 
     /**

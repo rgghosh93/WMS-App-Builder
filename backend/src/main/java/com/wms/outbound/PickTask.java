@@ -7,12 +7,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.wms.masterdata.container.Container;
+import com.wms.masterdata.location.Location;
+import com.wms.users.AppUser;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
@@ -42,6 +49,30 @@ public class PickTask {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private PickTaskStatus status;
+
+    /** The picker working on it. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to")
+    private AppUser assignedTo;
+
+    /** The outbound container (tote, carton...) it is picked into. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_container_id")
+    private Container toContainer;
+
+    /** The pack station the container was dropped at. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "drop_location_id")
+    private Location dropLocation;
+
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    @Column(name = "picked_at")
+    private Instant pickedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
 
     @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("detailNumber ASC")
@@ -84,8 +115,7 @@ public class PickTask {
     }
 
     /** Adds a detail that picks this allocation. */
-    PickTaskDetail addDetail(Allocation allocation, com.wms.masterdata.location.Location from,
-                             com.wms.masterdata.container.Container fromContainer) {
+    PickTaskDetail addDetail(Allocation allocation, Location from, Container fromContainer) {
         PickTaskDetail detail = new PickTaskDetail(UUID.randomUUID(), this, details.size() + 1, allocation, from, fromContainer);
         details.add(detail);
         return detail;
@@ -93,19 +123,63 @@ public class PickTask {
 
     /**
      * Cancels the open details that pick for this order. Details for other orders in a batch
-     * stay open; the task is cancelled once none of its details are open.
+     * stay open. Once none are open the task is cancelled, or ready to drop if it has picked stock.
      *
      * @return how many details were cancelled
      */
     int cancelFor(OutboundOrder order) {
         List<PickTaskDetail> cancelled = details.stream()
-                .filter(d -> d.getStatus() == PickTaskStatus.OPEN && d.getOrder().getId().equals(order.getId()))
+                .filter(d -> d.getStatus() == PickDetailStatus.OPEN && d.getOrder().getId().equals(order.getId()))
                 .toList();
         cancelled.forEach(PickTaskDetail::cancel);
-        if (details.stream().noneMatch(d -> d.getStatus() == PickTaskStatus.OPEN)) {
-            status = PickTaskStatus.CANCELLED;
+        if (!cancelled.isEmpty() && noneOpen()) {
+            if (anyPicked()) {
+                finishPicking();
+            } else {
+                status = PickTaskStatus.CANCELLED;
+            }
         }
         return cancelled.size();
+    }
+
+    boolean noneOpen() {
+        return details.stream().noneMatch(d -> d.getStatus() == PickDetailStatus.OPEN);
+    }
+
+    boolean anyPicked() {
+        return details.stream().anyMatch(d -> d.getPickedQuantity() > 0);
+    }
+
+    boolean anyPickedFor(OutboundOrder order) {
+        return details.stream().anyMatch(d -> d.getPickedQuantity() > 0 && d.getOrder().getId().equals(order.getId()));
+    }
+
+    /** Everything is picked; the container is ready to drop. */
+    void finishPicking() {
+        status = PickTaskStatus.PICKED;
+        pickedAt = Instant.now();
+    }
+
+    /** Done. No drop location means nothing could be picked. */
+    void complete(Location dropLocation) {
+        this.dropLocation = dropLocation;
+        status = PickTaskStatus.COMPLETED;
+        completedAt = Instant.now();
+    }
+
+    /** Back to waiting for a picker. */
+    void unassign() {
+        assignedTo = null;
+        startedAt = null;
+        status = PickTaskStatus.OPEN;
+    }
+
+    void clearToContainer() {
+        toContainer = null;
+    }
+
+    public int pickedQuantity() {
+        return details.stream().mapToInt(PickTaskDetail::getPickedQuantity).sum();
     }
 
     /** The orders this task picks for, in detail order. */
@@ -123,6 +197,12 @@ public class PickTask {
     public String getTaskNumber() { return taskNumber; }
     public PickMethod getPickMethod() { return pickMethod; }
     public PickTaskStatus getStatus() { return status; }
+    public AppUser getAssignedTo() { return assignedTo; }
+    public Container getToContainer() { return toContainer; }
+    public Location getDropLocation() { return dropLocation; }
+    public Instant getStartedAt() { return startedAt; }
+    public Instant getPickedAt() { return pickedAt; }
+    public Instant getCompletedAt() { return completedAt; }
     public List<PickTaskDetail> getDetails() { return details; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

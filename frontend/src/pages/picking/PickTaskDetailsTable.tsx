@@ -51,7 +51,12 @@ export function PickTaskDetailsTable({
                 <span className="code">{d.item.itemId}</span>
                 <span className="muted cell__sub">{d.item.description}</span>
               </td>
-              <td className="num">{d.quantity.toLocaleString()} EA</td>
+              <td className="num">
+                {d.quantity.toLocaleString()} EA
+                {(d.status === 'SHORT' || (d.pickedQuantity > 0 && d.pickedQuantity < d.quantity)) && (
+                  <span className="muted cell__sub">{d.pickedQuantity.toLocaleString()} picked</span>
+                )}
+              </td>
               <td>
                 <Link className="code" to={`/inventory/by-location?location=${d.fromLocation.id}`}>
                   {d.fromLocation.locationId}
@@ -69,6 +74,7 @@ export function PickTaskDetailsTable({
               <td className="code">{d.serialNumber ?? d.lotNumber ?? <span className="muted">—</span>}</td>
               <td>
                 <span className={`badge badge--task-${statusClass(d.status)}`}>{taskStatusLabel(d.status)}</span>
+                {d.pickedBy && <span className="muted cell__sub">{d.pickedBy}</span>}
               </td>
             </tr>
           ))}

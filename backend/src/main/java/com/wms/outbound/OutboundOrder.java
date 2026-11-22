@@ -84,6 +84,10 @@ public class OutboundOrder {
         List<OrderLine> open = lines.stream().filter(l -> l.getStatus() != LineStatus.CANCELLED).toList();
         if (open.isEmpty()) {
             status = OrderStatus.CANCELLED;
+        } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.PICKED)) {
+            status = OrderStatus.PICKED;
+        } else if (anyPicked()) {
+            status = OrderStatus.PICKING;
         } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.NEW)) {
             status = OrderStatus.NEW;
         } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.ALLOCATED)) {
@@ -94,6 +98,15 @@ public class OutboundOrder {
             status = OrderStatus.PARTIALLY_ALLOCATED;
         }
         updatedAt = Instant.now();
+    }
+
+    boolean anyPicked() {
+        return lines.stream().anyMatch(l -> l.getPickedQuantity() > 0);
+    }
+
+    /** Whether any open line still needs stock. */
+    boolean needsStock() {
+        return lines.stream().anyMatch(l -> l.getStatus() != LineStatus.CANCELLED && l.remaining() > 0);
     }
 
     public UUID getId() { return id; }

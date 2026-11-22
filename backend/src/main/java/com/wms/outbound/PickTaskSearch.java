@@ -14,7 +14,7 @@ import jakarta.persistence.criteria.Subquery;
 /**
  * Filters for listing pick tasks.
  *
- * @param q          free text matched (contains, any case) against task number, and the order
+ * @param q          free text matched (contains, any case) against task number, outbound container, picker, and the order
  *                   number, item, from-location and LPN of any of the task's details
  * @param status     exact task status
  * @param pickMethod discrete or batch
@@ -41,6 +41,8 @@ public record PickTaskSearch(String q, PickTaskStatus status, PickMethod pickMet
 
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("taskNumber")), like, '\\'),
+                        cb.like(cb.lower(root.join("toContainer", JoinType.LEFT).get("lpnId")), like, '\\'),
+                        cb.like(cb.lower(root.join("assignedTo", JoinType.LEFT).get("displayName")), like, '\\'),
                         cb.exists(inDetails)));
             }
             if (status != null) {

@@ -42,7 +42,7 @@ public final class OutboundViews {
     }
 
     /** The task detail an allocation became: which task, which detail, and its status. */
-    public record TaskRef(UUID id, String taskNumber, int detailNumber, PickTaskStatus status) {
+    public record TaskRef(UUID id, String taskNumber, int detailNumber, PickDetailStatus status) {
         static TaskRef of(PickTaskDetail d) {
             return d == null ? null
                     : new TaskRef(d.getTask().getId(), d.getTask().getTaskNumber(), d.getDetailNumber(), d.getStatus());
@@ -76,12 +76,13 @@ public final class OutboundViews {
             ItemRef item,
             int orderedQuantity,
             int allocatedQuantity,
+            int pickedQuantity,
             String requestedLot,
             LineStatus status) {
 
         static LineView of(OrderLine l) {
             return new LineView(l.getId(), l.getLineNumber(), ItemRef.of(l.getItem()), l.getOrderedQuantity(),
-                    l.getAllocatedQuantity(), l.getRequestedLot(), l.getStatus());
+                    l.getAllocatedQuantity(), l.getPickedQuantity(), l.getRequestedLot(), l.getStatus());
         }
     }
 
@@ -127,15 +128,20 @@ public final class OutboundViews {
             LpnRef fromContainer,
             String lotNumber,
             String serialNumber,
-            PickTaskStatus status,
+            PickDetailStatus status,
+            int pickedQuantity,
+            String pickedBy,
+            Instant pickedAt,
             UUID allocationId) {
 
         static TaskDetailView of(PickTaskDetail d) {
             return new TaskDetailView(d.getId(), d.getDetailNumber(), OrderRef.of(d.getOrder()), d.getLine().getLineNumber(),
                     ItemRef.of(d.getItem()),
                     d.getQuantity(), LocationRef.of(d.getFromLocation()), LpnRef.of(d.getFromContainer()),
-                    d.getLotNumber(), d.getSerialNumber(), d.getStatus(),
-                    d.getAllocation() == null ? null : d.getAllocation().getId());
+                    d.getLotNumber(), d.getSerialNumber(), d.getStatus(), d.getPickedQuantity(),
+                    d.getPickedBy() == null ? null : d.getPickedBy().getDisplayName(), d.getPickedAt(),
+                    d.getPickedAllocation() != null ? d.getPickedAllocation().getId()
+                            : d.getAllocation() == null ? null : d.getAllocation().getId());
         }
     }
 
@@ -146,6 +152,9 @@ public final class OutboundViews {
      * @param orders        the orders the task picks for, in detail order
      * @param lineCount     order lines the task picks for
      * @param locationCount places the picker has to visit
+     * @param assignedTo    the picker working on it
+     * @param toContainer   the outbound container it is picked into
+     * @param dropLocation  the pack station the container was dropped at
      */
     public record TaskView(
             UUID id,
@@ -157,8 +166,14 @@ public final class OutboundViews {
             int lineCount,
             int locationCount,
             int totalQuantity,
+            int pickedQuantity,
+            String assignedTo,
+            LpnRef toContainer,
+            LocationRef dropLocation,
             List<TaskDetailView> details,
-            Instant createdAt) {
+            Instant createdAt,
+            Instant startedAt,
+            Instant completedAt) {
 
         static TaskView of(PickTask t) {
             List<TaskDetailView> details = t.getDetails().stream().map(TaskDetailView::of).toList();
@@ -166,7 +181,9 @@ public final class OutboundViews {
                     t.orders().stream().map(OrderRef::of).toList(), t.getStatus(), details.size(),
                     (int) details.stream().map(d -> d.order().id() + "#" + d.lineNumber()).distinct().count(),
                     (int) details.stream().map(d -> d.fromLocation().id()).distinct().count(),
-                    t.totalQuantity(), details, t.getCreatedAt());
+                    t.totalQuantity(), t.pickedQuantity(),
+                    t.getAssignedTo() == null ? null : t.getAssignedTo().getDisplayName(), LpnRef.of(t.getToContainer()),
+                    LocationRef.of(t.getDropLocation()), details, t.getCreatedAt(), t.getStartedAt(), t.getCompletedAt());
         }
     }
 

@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
+import com.wms.users.AppUser;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -73,7 +74,22 @@ public class PickTaskDetail {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
-    private PickTaskStatus status;
+    private PickDetailStatus status;
+
+    @Column(name = "picked_quantity", nullable = false)
+    private int pickedQuantity;
+
+    /** The reservation of the stock already picked, now in the outbound container. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "picked_allocation_id")
+    private Allocation pickedAllocation;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "picked_by")
+    private AppUser pickedBy;
+
+    @Column(name = "picked_at")
+    private Instant pickedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -102,7 +118,7 @@ public class PickTaskDetail {
         this.fromContainer = fromContainer;
         this.lotNumber = allocation.getInventory().getLotNumber();
         this.serialNumber = allocation.getInventory().getSerialNumber();
-        this.status = PickTaskStatus.OPEN;
+        this.status = PickDetailStatus.OPEN;
     }
 
     @PrePersist
@@ -119,11 +135,44 @@ public class PickTaskDetail {
 
     /** No longer needed (e.g. the order was cancelled); the allocation it picked is released. */
     void cancel() {
-        status = PickTaskStatus.CANCELLED;
+        status = PickDetailStatus.CANCELLED;
         allocation = null;
     }
 
+    public int remaining() {
+        return quantity - pickedQuantity;
+    }
+
+    void recordPick(int eaches, AppUser user) {
+        pickedQuantity += eaches;
+        pickedBy = user;
+        pickedAt = Instant.now();
+    }
+
+    void close(PickDetailStatus status) {
+        this.status = status;
+    }
+
+    /** The whole reservation went into the outbound container as it was. */
+    void moveAllocation() {
+        pickedAllocation = allocation;
+        allocation = null;
+    }
+
+    /** Nothing is left to pick from the original reservation. */
+    void clearAllocation() {
+        allocation = null;
+    }
+
+    void setPickedAllocation(Allocation pickedAllocation) {
+        this.pickedAllocation = pickedAllocation;
+    }
+
     public UUID getId() { return id; }
+    public int getPickedQuantity() { return pickedQuantity; }
+    public Allocation getPickedAllocation() { return pickedAllocation; }
+    public AppUser getPickedBy() { return pickedBy; }
+    public Instant getPickedAt() { return pickedAt; }
     public PickTask getTask() { return task; }
     public int getDetailNumber() { return detailNumber; }
     public OutboundOrder getOrder() { return order; }
@@ -135,7 +184,7 @@ public class PickTaskDetail {
     public Container getFromContainer() { return fromContainer; }
     public String getLotNumber() { return lotNumber; }
     public String getSerialNumber() { return serialNumber; }
-    public PickTaskStatus getStatus() { return status; }
+    public PickDetailStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }

@@ -40,11 +40,12 @@ public class OrderService {
     private final OrderEventRepository events;
     private final ItemRepository items;
     private final AllocationService allocationService;
+    private final OutboundContainers outboundContainers;
     private final boolean autoAllocate;
 
     public OrderService(OrderRepository orders, AllocationRepository allocations, PickTaskRepository tasks,
                         PickTaskDetailRepository taskDetails, OrderEventRepository events, ItemRepository items,
-                        AllocationService allocationService,
+                        AllocationService allocationService, OutboundContainers outboundContainers,
                         @Value("${wms.outbound.auto-allocate:true}") boolean autoAllocate) {
         this.orders = orders;
         this.allocations = allocations;
@@ -53,6 +54,7 @@ public class OrderService {
         this.events = events;
         this.items = items;
         this.allocationService = allocationService;
+        this.outboundContainers = outboundContainers;
         this.autoAllocate = autoAllocate;
     }
 
@@ -102,8 +104,14 @@ public class OrderService {
     private List<AllocationView> allocationViews(List<Allocation> list) {
         Map<UUID, PickTaskDetail> taskByAllocation = new HashMap<>();
         if (!list.isEmpty()) {
-            taskDetails.findByAllocation_IdIn(list.stream().map(Allocation::getId).toList())
-                    .forEach(d -> taskByAllocation.put(d.getAllocation().getId(), d));
+            taskDetails.findByAllocations(list.stream().map(Allocation::getId).toList()).forEach(d -> {
+                if (d.getAllocation() != null) {
+                    taskByAllocation.put(d.getAllocation().getId(), d);
+                }
+                if (d.getPickedAllocation() != null) {
+                    taskByAllocation.put(d.getPickedAllocation().getId(), d);
+                }
+            });
         }
         return list.stream().map(a -> AllocationView.of(a, taskByAllocation.get(a.getId()))).toList();
     }
@@ -174,7 +182,7 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is cancelled.", Map.of());
         }
-        if (order.getStatus() == OrderStatus.ALLOCATED) {
+        if (!order.needsStock()) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is already fully allocated.", Map.of());
         }
         allocationService.allocate(order);
@@ -184,7 +192,7 @@ public class OrderService {
 
     /**
      * Allocates several orders together onto one batch pick task, so one walk picks for all of them.
-     * Orders must be distinct and still need stock (new, partially allocated or backordered).
+     * Orders must be distinct and still need stock (not cancelled or fully allocated).
      *
      * @return the batch task, or null if no stock could be reserved for any of them
      */
@@ -204,7 +212,7 @@ public class OrderService {
         }
         batch.sort(Comparator.comparing(OutboundOrder::getOrderNumber));
         List<String> blocked = batch.stream()
-                .filter(o -> o.getStatus() == OrderStatus.CANCELLED || o.getStatus() == OrderStatus.ALLOCATED)
+                .filter(o -> o.getStatus() == OrderStatus.CANCELLED || !o.needsStock())
                 .map(o -> o.getOrderNumber() + " is " + (o.getStatus() == OrderStatus.CANCELLED ? "cancelled" : "already fully allocated"))
                 .toList();
         if (!blocked.isEmpty()) {
@@ -232,6 +240,10 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is already cancelled.", Map.of());
         }
+        if (order.anyPicked()) {
+            throw ApiException.conflict("Order " + order.getOrderNumber()
+                    + " can't be cancelled: some of it has already been picked.", Map.of());
+        }
         // On a batch task only this order's details are cancelled; the other orders still get picked.
         List<String> touched = new ArrayList<>();
         int cancelledDetails = 0;
@@ -239,6 +251,9 @@ public class OrderService {
             int n = task.cancelFor(order);
             if (n > 0) {
                 touched.add(task.getTaskNumber());
+                if (task.getStatus() == PickTaskStatus.CANCELLED) {
+                    outboundContainers.release(task);
+                }
                 cancelledDetails += n;
             }
         }

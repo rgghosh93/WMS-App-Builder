@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.wms.inventory.InventoryRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
+import com.wms.masterdata.location.LocationType;
 import com.wms.outbound.OrderEvent.Type;
 
 /**
@@ -20,7 +21,8 @@ import com.wms.outbound.OrderEvent.Type;
  * Rules: only Available stock of the line's item (and its lot, if the line asks for one);
  * stock already reserved for other lines is not used again; earliest expiry first, then
  * oldest received first. Stock inside containers counts, and is picked from the location
- * of the outermost container. Stock with no known location is skipped.
+ * of the outermost container. Stock with no known location, or outside storage (such as at a
+ * pack station), is skipped.
  */
 @Service
 @Transactional
@@ -137,7 +139,7 @@ public class AllocationService {
             }
             long free = record.getQuantity() - reserved.getOrDefault(record.getId(), 0L);
             Location location = locationOf(record);
-            if (free <= 0 || location == null) {
+            if (free <= 0 || location == null || location.getType() != LocationType.STORAGE) {
                 continue;
             }
             int quantity = (int) Math.min(free, needed - taken);

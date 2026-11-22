@@ -66,6 +66,9 @@ function detail(n: number, extra: Partial<PickTaskDetailView> = {}): PickTaskDet
     lotNumber: 'PB2610A',
     serialNumber: null,
     status: 'OPEN',
+    pickedQuantity: 0,
+    pickedBy: null,
+    pickedAt: null,
     allocationId: `a${n}`,
     ...extra,
   };
@@ -86,7 +89,13 @@ function task(n: number, extra: Partial<PickTaskView> = {}): PickTaskView {
     lineCount: new Set(details.map((d) => d.lineNumber)).size,
     locationCount: new Set(details.map((d) => d.fromLocation.id)).size,
     totalQuantity: details.reduce((sum, d) => sum + d.quantity, 0),
+    pickedQuantity: 0,
+    assignedTo: null,
+    toContainer: null,
+    dropLocation: null,
     details,
+    startedAt: null,
+    completedAt: null,
     createdAt: '2026-11-20T15:00:01Z',
     ...extra,
   };
@@ -106,6 +115,7 @@ const DETAIL: OrderDetail = {
       item: { id: 'i1', itemId: 'SKU-20001', description: 'Protein bar' },
       orderedQuantity: 30,
       allocatedQuantity: 27,
+      pickedQuantity: 0,
       requestedLot: null,
       status: 'PARTIALLY_ALLOCATED',
     },
@@ -115,6 +125,7 @@ const DETAIL: OrderDetail = {
       item: { id: 'i2', itemId: 'SKU-20002', description: 'Sparkling water' },
       orderedQuantity: 50,
       allocatedQuantity: 50,
+      pickedQuantity: 0,
       requestedLot: null,
       status: 'ALLOCATED',
     },
@@ -193,7 +204,10 @@ beforeEach(() => {
       if (url.pathname === '/api/orders' && method === 'POST') return json({ ...DETAIL, id: 'new', orderNumber: 'SO001005' }, 201);
       if (url.pathname === '/api/orders/o2') return json(DETAIL);
       if (url.pathname === '/api/orders/new') return json({ ...DETAIL, id: 'new', orderNumber: 'SO001005' });
-      if (url.pathname === '/api/orders/o2/allocate') return json({ ...DETAIL, status: 'ALLOCATED' });
+      if (url.pathname === '/api/orders/o2/allocate') {
+        const lines = DETAIL.lines.map((l) => ({ ...l, allocatedQuantity: l.orderedQuantity, status: 'ALLOCATED' }));
+        return json({ ...DETAIL, status: 'ALLOCATED', lines });
+      }
       if (url.pathname === '/api/orders/o2/cancel') {
         return json({ ...DETAIL, status: 'CANCELLED', allocations: [], tasks: DETAIL.tasks.map((t) => ({ ...t, status: 'CANCELLED' })) });
       }

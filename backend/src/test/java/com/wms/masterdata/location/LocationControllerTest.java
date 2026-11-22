@@ -157,6 +157,21 @@ class LocationControllerTest {
     }
 
     @Test
+    void packStationsAreIdentifiedByAreaZoneAndPosition() throws Exception {
+        String station = """
+                {"locationId":"%s","type":"PACKING","area":"DC1","zone":"PACK","position":"01"%s,
+                 "width":72,"depth":36,"height":36,"dimensionUom":"IN"}
+                """;
+        create(station.formatted("DC1-PACK-01", "")).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type").value("PACKING"))
+                .andExpect(jsonPath("$.aisle").value(org.hamcrest.Matchers.nullValue()));
+        create(station.formatted("OTHER", "")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errors.identifiers", containsString("DC1-PACK-01")));
+        create(station.formatted("DC1-PACK-09", ",\"aisle\":\"01\"")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.aisle", containsString("not used")));
+    }
+
+    @Test
     void storesCapacityLimits() throws Exception {
         create(withCapacity("""
                 "maxWeight":2500,"maxWeightUom":"LB","maxVolume":66.667,"maxVolumeUom":"CU_FT",

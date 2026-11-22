@@ -58,7 +58,7 @@ export function PickTaskDetailPage() {
           </h1>
           <p className="muted">
             {task.pickMethod === 'BATCH'
-              ? `Batch pick for ${task.orders.length} orders in one walk. Each detail picks one allocation; sort it to the order shown.`
+              ? `Batch pick for ${task.orders.length} orders in one walk. Each detail picks one allocation; the order shown is who it is for, so the container can be sorted at packing.`
               : 'Each detail picks the stock of one allocation.'}
           </p>
         </div>
@@ -94,13 +94,55 @@ export function PickTaskDetailPage() {
           <dd>{task.locationCount}</dd>
         </div>
         <div>
-          <dt>Quantity</dt>
-          <dd>{task.totalQuantity.toLocaleString()} EA</dd>
+          <dt>Picked</dt>
+          <dd>
+            {task.pickedQuantity.toLocaleString()} of {task.totalQuantity.toLocaleString()} EA
+          </dd>
+        </div>
+        <div>
+          <dt>Picker</dt>
+          <dd>{task.assignedTo ?? <span className="muted">Not started</span>}</dd>
+        </div>
+        <div>
+          <dt>Picked into</dt>
+          <dd>
+            {task.toContainer ? (
+              <Link className="code" to={`/inventory/by-container?container=${task.toContainer.id}`}>
+                {task.toContainer.lpnId}
+              </Link>
+            ) : (
+              <span className="muted">—</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Dropped at</dt>
+          <dd>
+            {task.dropLocation ? (
+              <Link className="code" to={`/inventory/by-location?location=${task.dropLocation.id}`}>
+                {task.dropLocation.locationId}
+              </Link>
+            ) : (
+              <span className="muted">—</span>
+            )}
+          </dd>
         </div>
         <div>
           <dt>Created</dt>
           <dd>{formatDateTime(task.createdAt)}</dd>
         </div>
+        {task.startedAt && (
+          <div>
+            <dt>Started</dt>
+            <dd>{formatDateTime(task.startedAt)}</dd>
+          </div>
+        )}
+        {task.completedAt && (
+          <div>
+            <dt>Completed</dt>
+            <dd>{formatDateTime(task.completedAt)}</dd>
+          </div>
+        )}
       </dl>
 
       <section className="section" aria-labelledby="details-title">

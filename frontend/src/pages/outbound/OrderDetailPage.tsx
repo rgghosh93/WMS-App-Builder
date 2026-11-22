@@ -83,9 +83,10 @@ export function OrderDetailPage() {
   const open = order.lines.filter((l) => l.status !== 'CANCELLED');
   const ordered = open.reduce((s, l) => s + l.orderedQuantity, 0);
   const allocated = open.reduce((s, l) => s + l.allocatedQuantity, 0);
-  const allocatable = canAllocate(order.status);
-  const canCancel = order.status !== 'CANCELLED';
-  const openTasks = order.tasks.filter((t) => t.status === 'OPEN').length;
+  const allocatable = canAllocate({ status: order.status, orderedQuantity: ordered, allocatedQuantity: allocated });
+  const picked = order.lines.reduce((s, l) => s + l.pickedQuantity, 0);
+  const canCancel = order.status !== 'CANCELLED' && picked === 0;
+  const openTasks = order.tasks.filter((t) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').length;
   const allocationsByLine = new Map<number, AllocationView[]>();
   for (const a of order.allocations) {
     allocationsByLine.set(a.lineNumber, [...(allocationsByLine.get(a.lineNumber) ?? []), a]);
@@ -196,7 +197,7 @@ export function OrderDetailPage() {
           <dt>Pick tasks</dt>
           <dd>
             {openTasks} open
-            {order.tasks.length > openTasks ? ` · ${order.tasks.length - openTasks} cancelled` : ''}
+            {order.tasks.length > openTasks ? ` · ${order.tasks.length - openTasks} closed` : ''}
           </dd>
         </div>
         <div>
@@ -220,6 +221,9 @@ export function OrderDetailPage() {
                 <th scope="col" className="num">
                   Allocations
                 </th>
+                <th scope="col" className="num">
+                  Picked
+                </th>
                 <th scope="col">Status</th>
               </tr>
             </thead>
@@ -236,6 +240,7 @@ export function OrderDetailPage() {
                     <AllocationBar allocated={l.allocatedQuantity} ordered={l.orderedQuantity} />
                   </td>
                   <td className="num">{allocationsByLine.get(l.lineNumber)?.length ?? 0}</td>
+                  <td className="num">{l.pickedQuantity.toLocaleString()} EA</td>
                   <td>
                     <span className={`badge badge--order-${statusClass(l.status)}`}>{orderStatusLabel(l.status)}</span>
                   </td>

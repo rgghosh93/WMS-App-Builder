@@ -6,6 +6,7 @@ import { AllocationsPage } from './pages/outbound/AllocationsPage';
 import { OrderDetailPage } from './pages/outbound/OrderDetailPage';
 import { OrdersPage } from './pages/outbound/OrdersPage';
 import { PickTaskDetailPage } from './pages/picking/PickTaskDetailPage';
+import { RfApp } from './pages/rf/RfApp';
 import { PickTasksPage } from './pages/picking/PickTasksPage';
 import { InventoryByLocationPage } from './pages/inventory/InventoryByLocationPage';
 import { ContainersPage } from './pages/masterdata/ContainersPage';
@@ -17,6 +18,7 @@ import { UomsPage } from './pages/masterdata/UomsPage';
 export function App() {
   return (
     <Routes>
+      <Route path="rf/*" element={<RfApp />} />
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
         <Route path="master-data/locations" element={<LocationsPage />} />

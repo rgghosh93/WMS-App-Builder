@@ -39,6 +39,9 @@ public class OrderLine {
     @Column(name = "allocated_quantity", nullable = false)
     private int allocatedQuantity;
 
+    @Column(name = "picked_quantity", nullable = false)
+    private int pickedQuantity;
+
     /** Only allocate this lot, if set. */
     @Column(name = "requested_lot", length = 40)
     private String requestedLot;
@@ -68,7 +71,25 @@ public class OrderLine {
     /** Records more allocated stock and sets the line's status after an allocation run. */
     void allocated(int quantity) {
         allocatedQuantity += quantity;
-        if (allocatedQuantity >= orderedQuantity) {
+        refreshStatus();
+    }
+
+    /** Records stock picked into an outbound container. */
+    void picked(int quantity) {
+        pickedQuantity += quantity;
+        refreshStatus();
+    }
+
+    /** Reserved stock turned out to be missing, so the line needs it again. */
+    void releaseAllocated(int quantity) {
+        allocatedQuantity -= quantity;
+        refreshStatus();
+    }
+
+    private void refreshStatus() {
+        if (pickedQuantity >= orderedQuantity) {
+            status = LineStatus.PICKED;
+        } else if (allocatedQuantity >= orderedQuantity) {
             status = LineStatus.ALLOCATED;
         } else if (allocatedQuantity > 0) {
             status = LineStatus.PARTIALLY_ALLOCATED;
@@ -87,6 +108,7 @@ public class OrderLine {
     public int getLineNumber() { return lineNumber; }
     public Item getItem() { return item; }
     public int getOrderedQuantity() { return orderedQuantity; }
+    public int getPickedQuantity() { return pickedQuantity; }
     public int getAllocatedQuantity() { return allocatedQuantity; }
     public String getRequestedLot() { return requestedLot; }
     public LineStatus getStatus() { return status; }

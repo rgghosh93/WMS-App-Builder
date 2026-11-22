@@ -216,7 +216,7 @@ export function OrdersPage() {
               {page.content.map((o) => (
                 <tr key={o.id} className="table__row--link" onClick={() => navigate(`/outbound/orders/${o.id}`)}>
                   <td className="table__select" onClick={(e) => e.stopPropagation()}>
-                    {canAllocate(o.status) && (
+                    {canAllocate(o) && (
                       <input
                         type="checkbox"
                         aria-label={`Select ${o.orderNumber} for batch`}

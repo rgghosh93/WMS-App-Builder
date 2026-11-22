@@ -11,10 +11,12 @@ import java.util.List;
 
 /**
  * Kinds of location. Each type declares which identifiers make up its
- * unique address; more types (staging, dock, pack station...) will follow.
+ * unique address; more types (staging, dock...) will follow.
  */
 public enum LocationType {
-    STORAGE("Storage", List.of(AREA, ZONE, AISLE, BAY, LEVEL, POSITION));
+    STORAGE("Storage", List.of(AREA, ZONE, AISLE, BAY, LEVEL, POSITION)),
+    /** A pack station: where picked containers are dropped to be packed. */
+    PACKING("Packing", List.of(AREA, ZONE, POSITION));
 
     private final String label;
     private final List<LocationIdentifier> requiredIdentifiers;

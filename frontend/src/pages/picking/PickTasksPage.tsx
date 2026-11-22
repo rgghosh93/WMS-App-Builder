@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
+  TASK_STATUSES,
   listPickTasks,
   statusClass,
   taskStatusLabel,
@@ -79,14 +80,17 @@ export function PickTasksPage() {
 
       <div className="toolbar">
         <div className="toolbar__search">
-          <SearchBox value={searchText} onChange={setSearchText} placeholder="Search task, order, item or location…" label="Search pick tasks" />
+          <SearchBox value={searchText} onChange={setSearchText} placeholder="Search task, order, item, location, container or picker…" label="Search pick tasks" />
         </div>
         <label className="select-inline">
           <span>Status</span>
           <select value={query.status} onChange={(e) => updateQuery({ status: e.target.value as PickTaskStatus | '' })}>
             <option value="">All</option>
-            <option value="OPEN">Open</option>
-            <option value="CANCELLED">Cancelled</option>
+            {TASK_STATUSES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="select-inline">
@@ -132,6 +136,8 @@ export function PickTasksPage() {
                   Quantity
                 </th>
                 <th scope="col">Status</th>
+                <th scope="col">Picker</th>
+                <th scope="col">Container</th>
                 <th scope="col">Created</th>
               </tr>
             </thead>
@@ -155,6 +161,11 @@ export function PickTasksPage() {
                   <td className="num">{t.totalQuantity.toLocaleString()} EA</td>
                   <td>
                     <span className={`badge badge--task-${statusClass(t.status)}`}>{taskStatusLabel(t.status)}</span>
+                  </td>
+                  <td>{t.assignedTo ?? <span className="muted">—</span>}</td>
+                  <td>
+                    {t.toContainer ? <span className="code">{t.toContainer.lpnId}</span> : <span className="muted">—</span>}
+                    {t.dropLocation && <span className="muted cell__sub">{t.dropLocation.locationId}</span>}
                   </td>
                   <td className="muted">{formatDateTime(t.createdAt)}</td>
                 </tr>
@@ -183,7 +194,7 @@ function readQuery(params: URLSearchParams): PickTaskQuery {
   const page = Number(params.get('page'));
   return {
     q: params.get('q') ?? '',
-    status: status === 'OPEN' || status === 'CANCELLED' ? status : '',
+    status: TASK_STATUSES.find((s) => s.value === status)?.value ?? '',
     pickMethod: method === 'DISCRETE' || method === 'BATCH' ? method : '',
     size: PAGE_SIZES.includes(size) ? size : PAGE_SIZES[0],
     page: Number.isInteger(page) && page > 0 ? page : 0,

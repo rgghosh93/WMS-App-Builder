@@ -72,6 +72,7 @@
     "icon": "picking",
     "pages": [
       { "id": "pick-tasks", "title": "Pick Tasks", "description": "Picks created by allocation, by location and LPN", "route": "/picking/tasks", "status": "AVAILABLE" },
+      { "id": "mobile-device", "title": "Mobile Device", "description": "Sign in on a handheld to pick tasks by scanning", "route": "/rf", "status": "AVAILABLE" },
       { "id": "short-picks", "title": "Short Picks", "description": "Resolve picks that came up short", "route": "/picking/short-picks", "status": "PLANNED" }
     ]
   },

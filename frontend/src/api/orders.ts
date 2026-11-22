@@ -1,21 +1,24 @@
 import { request, type Page } from './http';
 import type { InventoryStatus } from './inventory';
 
-export type OrderStatus = 'NEW' | 'PARTIALLY_ALLOCATED' | 'ALLOCATED' | 'BACKORDERED' | 'CANCELLED';
+export type OrderStatus = 'NEW' | 'PARTIALLY_ALLOCATED' | 'ALLOCATED' | 'PICKING' | 'PICKED' | 'BACKORDERED' | 'CANCELLED';
 export type LineStatus = OrderStatus;
-export type PickTaskStatus = 'OPEN' | 'CANCELLED';
+export type PickTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'PICKED' | 'COMPLETED' | 'CANCELLED';
+export type PickDetailStatus = 'OPEN' | 'PICKED' | 'SHORT' | 'CANCELLED';
 /** DISCRETE picks for one order; BATCH picks for several orders in one walk. */
 export type PickMethod = 'DISCRETE' | 'BATCH';
 
 export function pickMethodLabel(method: PickMethod): string {
   return method === 'BATCH' ? 'Batch' : 'Discrete';
 }
-export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'CANCELLED';
+export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'PICKED' | 'DROPPED' | 'CANCELLED';
 
 export const ORDER_STATUSES: { value: OrderStatus; label: string; hint: string }[] = [
   { value: 'NEW', label: 'New', hint: 'Received; not allocated yet' },
   { value: 'PARTIALLY_ALLOCATED', label: 'Partially allocated', hint: 'Some of the ordered quantity has stock reserved' },
   { value: 'ALLOCATED', label: 'Allocated', hint: 'Fully allocated, with pick tasks' },
+  { value: 'PICKING', label: 'Picking', hint: 'Picking has started; some of it is in outbound containers' },
+  { value: 'PICKED', label: 'Picked', hint: 'Everything ordered is picked' },
   { value: 'BACKORDERED', label: 'Backordered', hint: 'No stock could be reserved' },
   { value: 'CANCELLED', label: 'Cancelled', hint: 'Stock released and tasks cancelled' },
 ];
@@ -24,8 +27,17 @@ export function orderStatusLabel(status: OrderStatus): string {
   return ORDER_STATUSES.find((s) => s.value === status)?.label ?? status;
 }
 
-export function taskStatusLabel(status: PickTaskStatus): string {
-  return status === 'OPEN' ? 'Open' : 'Cancelled';
+export const TASK_STATUSES: { value: PickTaskStatus; label: string }[] = [
+  { value: 'OPEN', label: 'Open' },
+  { value: 'IN_PROGRESS', label: 'Picking' },
+  { value: 'PICKED', label: 'Picked' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+];
+
+export function taskStatusLabel(status: PickTaskStatus | PickDetailStatus): string {
+  if (status === 'SHORT') return 'Short';
+  return TASK_STATUSES.find((s) => s.value === status)?.label ?? status;
 }
 
 /** CSS modifier for a status badge, e.g. "partially-allocated". */
@@ -66,6 +78,7 @@ export interface OrderLineView {
   item: ItemRef;
   orderedQuantity: number;
   allocatedQuantity: number;
+  pickedQuantity: number;
   requestedLot: string | null;
   status: LineStatus;
 }
@@ -99,7 +112,7 @@ export interface TaskRef {
   id: string;
   taskNumber: string;
   detailNumber: number;
-  status: PickTaskStatus;
+  status: PickDetailStatus;
 }
 
 /** One pick of a task: made from exactly one allocation. */
@@ -115,7 +128,10 @@ export interface PickTaskDetailView {
   fromContainer: { id: string; lpnId: string } | null;
   lotNumber: string | null;
   serialNumber: string | null;
-  status: PickTaskStatus;
+  status: PickDetailStatus;
+  pickedQuantity: number;
+  pickedBy: string | null;
+  pickedAt: string | null;
   /** The allocation this detail picks; null once cancelled. */
   allocationId: string | null;
 }
@@ -132,8 +148,17 @@ export interface PickTaskView {
   lineCount: number;
   locationCount: number;
   totalQuantity: number;
+  pickedQuantity: number;
+  /** Name of the picker working on it. */
+  assignedTo: string | null;
+  /** The outbound container it is picked into. */
+  toContainer: { id: string; lpnId: string } | null;
+  /** The pack station the container was dropped at. */
+  dropLocation: { id: string; locationId: string } | null;
   details: PickTaskDetailView[];
   createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 export interface OrderEventView {
@@ -208,9 +233,9 @@ export function batchAllocate(orderIds: string[]): Promise<BatchAllocation> {
   return request('/api/orders/batch-allocate', { method: 'POST', body: JSON.stringify({ orderIds }) });
 }
 
-/** Orders that still need stock and so can be allocated (alone or in a batch). */
-export function canAllocate(status: OrderStatus): boolean {
-  return status === 'NEW' || status === 'PARTIALLY_ALLOCATED' || status === 'BACKORDERED';
+/** Whether an order still needs stock and so can be allocated (alone or in a batch). */
+export function canAllocate(order: { status: OrderStatus; orderedQuantity: number; allocatedQuantity: number }): boolean {
+  return order.status !== 'CANCELLED' && order.allocatedQuantity < order.orderedQuantity;
 }
 
 export function allocateOrder(id: string): Promise<OrderDetail> {

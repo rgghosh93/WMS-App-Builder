@@ -47,6 +47,11 @@ public class Allocation {
         this.createdAt = Instant.now();
     }
 
+    /** Adds to (or, if negative, takes from) the reserved quantity. */
+    void changeQuantity(int by) {
+        quantity += by;
+    }
+
     public UUID getId() { return id; }
     public OrderLine getLine() { return line; }
     public InventoryRecord getInventory() { return inventory; }

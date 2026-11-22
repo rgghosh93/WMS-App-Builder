@@ -30,6 +30,7 @@ public record AllocationSearch(String q, OrderStatus orderStatus, InventoryStatu
             var order = line.join("order", JoinType.INNER);
             var item = line.join("item", JoinType.INNER);
             var stock = root.join("inventory", JoinType.INNER);
+            var stockLpn = stock.join("container", JoinType.LEFT);
             if (q != null && !q.isBlank()) {
                 String like = "%" + OrderSearch.escape(q.trim().toLowerCase(Locale.ROOT)) + "%";
 
@@ -38,9 +39,11 @@ public record AllocationSearch(String q, OrderStatus orderStatus, InventoryStatu
                 Root<PickTaskDetail> task = place.from(PickTaskDetail.class);
                 var location = task.join("fromLocation", JoinType.INNER);
                 var lpn = task.join("fromContainer", JoinType.LEFT);
-                place.select(cb.literal(1)).where(cb.equal(task.get("allocation"), root), cb.or(
+                place.select(cb.literal(1)).where(cb.or(cb.equal(task.get("allocation"), root),
+                        cb.equal(task.get("pickedAllocation"), root)), cb.or(
                         cb.like(cb.lower(location.get("locationId")), like, '\\'),
-                        cb.like(cb.lower(lpn.get("lpnId")), like, '\\')));
+                        cb.like(cb.lower(lpn.get("lpnId")), like, '\\'),
+                        cb.like(cb.lower(stockLpn.get("lpnId")), like, '\\')));
 
                 predicates.add(cb.or(
                         cb.like(cb.lower(order.get("orderNumber")), like, '\\'),

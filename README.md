@@ -26,11 +26,16 @@ cd frontend && npm install && npm run dev
 
 Then open http://localhost:5173.
 
+The mobile device app is at http://localhost:5173/rf (or Picking > Mobile Device). With demo data
+on, sign in as `PICKER1` or `PICKER2`; the PIN is `wms.demo-data.user-pin` in
+`backend/src/main/resources/application.properties`. Barcode scanners work as keyboards that end
+each scan with Enter.
+
 ## Database
 
 Local dev uses an embedded H2 database in PostgreSQL mode, saved under `backend/data/`
 (git-ignored). Flyway migrations in `backend/src/main/resources/db/migration` own the schema.
-On first start with an empty database, 144 demo storage locations are loaded
+On first start with an empty database, 144 demo storage locations and 4 pack stations are loaded
 (`wms.demo-data.enabled=true`). Delete `backend/data/` to start fresh.
 
 To run against PostgreSQL instead, start the backend with the `postgres` profile and set
