@@ -25,11 +25,13 @@ public class DemoUserLoader implements ApplicationRunner {
 
     private final AppUserRepository users;
     private final PinHasher hasher;
+    private final RoleRepository roles;
     private final String pin;
 
-    public DemoUserLoader(AppUserRepository users, PinHasher hasher, @Value("${wms.demo-data.user-pin:}") String pin) {
+    public DemoUserLoader(AppUserRepository users, PinHasher hasher, RoleRepository roles, @Value("${wms.demo-data.user-pin:}") String pin) {
         this.users = users;
         this.hasher = hasher;
+        this.roles = roles;
         this.pin = pin;
     }
 
@@ -41,6 +43,8 @@ public class DemoUserLoader implements ApplicationRunner {
         List<AppUser> demo = List.of(
                 new AppUser(UUID.randomUUID(), "PICKER1", "Demo Picker 1", hasher.hash(pin)),
                 new AppUser(UUID.randomUUID(), "PICKER2", "Demo Picker 2", hasher.hash(pin)));
+        Role operator = roles.findById(Role.OPERATOR).orElseThrow();
+        demo.forEach(u -> u.setRoles(List.of(operator)));
         users.saveAll(demo);
         log.info("Loaded {} demo users", demo.size());
     }

@@ -4,9 +4,11 @@ import {
   confirmPick,
   dropContainer,
   getPicking,
+  listPickZones,
   releaseTask,
   scanMatches,
   startPicking,
+  type PickZone,
   type PickingState,
   type TaskProgress,
 } from '../../api/rf';
@@ -19,6 +21,23 @@ export function PickingTransaction({ onSignedOut }: { onSignedOut: () => void })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /** A container someone else is picking into, waiting for a yes to take it over. */
+  const [takeOver, setTakeOver] = useState<{ lpnId: string; message: string } | null>(null);
+
+  const [zones, setZones] = useState<PickZone[] | null>(null);
+  const [chosen, setChosen] = useState(readZone);
+  // A remembered zone counts only while it is there. Until that is known, it is taken to be.
+  const zone = zones?.find((z) => z.id === chosen);
+  const zoneId = zones ? zone?.id : chosen || undefined;
+
+  // What waits in each zone changes as people pick, so look again each time a container is to be scanned.
+  const scanning = state?.step === 'SCAN_CONTAINER' ? state : null;
+  useEffect(() => {
+    if (!scanning) return;
+    const controller = new AbortController();
+    listPickZones(controller.signal).then(setZones, () => undefined);
+    return () => controller.abort();
+  }, [scanning]);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -62,6 +81,29 @@ export function PickingTransaction({ onSignedOut }: { onSignedOut: () => void })
     }
   };
 
+  const start = async (lpnId: string, over = false) => {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    setTakeOver(null);
+    try {
+      setState(await startPicking(lpnId, null, over, zoneId));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        onSignedOut();
+        return;
+      }
+      if (e instanceof ApiError && e.status === 409 && e.fieldErrors.assignedTo) {
+        setTakeOver({ lpnId, message: e.message });
+      } else {
+        if (e instanceof ApiError && e.status === 409) await load();
+        setError(errorMessage(e));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!state) {
     return error ? (
       <>
@@ -96,15 +138,51 @@ export function PickingTransaction({ onSignedOut }: { onSignedOut: () => void })
 
       {state.step === 'SCAN_CONTAINER' && (
         <>
+          {zones && zones.length > 0 && (
+            <label className="scan">
+              <span className="scan__label">Pick zone</span>
+              <select
+                className="scan__input"
+                value={zone?.id ?? ''}
+                disabled={busy}
+                onChange={(e) => {
+                  setChosen(e.target.value);
+                  writeZone(e.target.value);
+                  setError(null);
+                }}
+              >
+                <option value="">Any zone</option>
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.code} · {z.name} ({z.waiting} waiting)
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <section className="rf-card">
             <p className="rf-card__action">Scan an outbound container</p>
             <p className="muted">A tote, or the label of a new carton.</p>
           </section>
-          <ScanInput label="Container" busy={busy} error={error} onScan={(lpn) => run(() => startPicking(lpn))} />
+          <ScanInput key={zoneId ?? 'any'} label="Container" busy={busy} error={error} onScan={(lpn) => void start(lpn)} />
+          {takeOver && (
+            <section className="rf-card" role="group" aria-label="Take over">
+              <p className="rf-card__action">{takeOver.message}</p>
+              <p className="muted">Only take it over if you have the container.</p>
+              <div className="rf-choices">
+                <button type="button" className="rf-button rf-button--primary" disabled={busy} onClick={() => void start(takeOver.lpnId, true)}>
+                  Take over {takeOver.lpnId.toUpperCase()}
+                </button>
+                <button type="button" className="rf-button rf-button--quiet" onClick={() => setTakeOver(null)}>
+                  Leave it
+                </button>
+              </div>
+            </section>
+          )}
           <p className="rf-waiting muted">
-            {state.waitingTasks === 0
-              ? 'No pick tasks are waiting.'
-              : `${state.waitingTasks} pick task${state.waitingTasks === 1 ? '' : 's'} waiting`}
+            {(zone ? zone.waiting : state.waitingTasks) === 0
+              ? `No pick tasks are waiting${zone ? ` in ${zone.code}` : ''}.`
+              : `${zone ? zone.waiting : state.waitingTasks} pick task${(zone ? zone.waiting : state.waitingTasks) === 1 ? '' : 's'} waiting${zone ? ` in ${zone.code}` : ''}`}
           </p>
         </>
       )}
@@ -127,7 +205,7 @@ export function PickingTransaction({ onSignedOut }: { onSignedOut: () => void })
                 type="button"
                 className="rf-button"
                 disabled={busy}
-                onClick={() => run(() => startPicking(state.newContainer!.lpnId, t.id))}
+                onClick={() => run(() => startPicking(state.newContainer!.lpnId, t.id, false, zoneId))}
               >
                 <strong>{t.containerTypeId}</strong> {t.description}
               </button>
@@ -199,6 +277,26 @@ export function PickingTransaction({ onSignedOut }: { onSignedOut: () => void })
   );
 }
 
+const ZONE_KEY = 'wms.pickZone';
+
+/** The pick zone chosen on this device before, if any. */
+function readZone(): string {
+  try {
+    return localStorage.getItem(ZONE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeZone(id: string) {
+  try {
+    if (id) localStorage.setItem(ZONE_KEY, id);
+    else localStorage.removeItem(ZONE_KEY);
+  } catch {
+    // only a convenience
+  }
+}
+
 /** Which task, what it is picked into, and how far along it is. */
 function TaskStrip({ task }: { task: TaskProgress }) {
   return (
@@ -206,6 +304,7 @@ function TaskStrip({ task }: { task: TaskProgress }) {
       <div className="rf-strip__row">
         <h1 className="code">{task.taskNumber}</h1>
         {task.pickMethod === 'BATCH' && <span className="badge badge--sm badge--method-batch">Batch · {task.orderCount} orders</span>}
+        {task.pickZone && <span className="badge badge--sm">Zone {task.pickZone}</span>}
         <span className="rf-strip__into">
           into <span className="code">{task.toLpnId}</span>
         </span>

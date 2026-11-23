@@ -140,7 +140,7 @@ describe('Inventory by Location', () => {
     expect(within(gloves).getByText('Damaged')).toBeInTheDocument();
     expect(within(table).queryByRole('columnheader', { name: 'Serial' })).not.toBeInTheDocument();
     const glasses = within(table).getByText('SKU-10003').closest('tr')!;
-    expect(within(glasses).getByTitle('Reserved for orders')).toHaveTextContent('24 EA');
+    expect(within(glasses).getByTitle('Reserved')).toHaveTextContent('24 EA');
   });
 
   it('shows containers and the containers inside them', async () => {

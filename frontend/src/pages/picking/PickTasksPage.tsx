@@ -12,6 +12,8 @@ import {
 } from '../../api/orders';
 import { PickMethodBadge } from './PickTaskDetailsTable';
 import { errorMessage, type Page } from '../../api/http';
+import { listZones, type Zone } from '../../api/zones';
+import { FilterSelect } from '../../components/ListPage';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { formatDateTime } from '../outbound/OrdersPage';
@@ -29,6 +31,14 @@ export function PickTasksPage() {
   const [searchText, setSearchText] = useState(query.q);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
+  const [zones, setZones] = useState<Zone[]>([]);
+
+  // Only for the filter, so the page does without if they can't be had.
+  useEffect(() => {
+    const controller = new AbortController();
+    listZones('PICKING', controller.signal).then(setZones, () => undefined);
+    return () => controller.abort();
+  }, []);
 
   const updateQuery = useCallback(
     (changes: Partial<PickTaskQuery>) => {
@@ -60,6 +70,7 @@ export function PickTasksPage() {
   }, [queryKey, reloadKey]);
 
   const page = state.status === 'ready' ? state.page : state.status === 'loading' ? state.previous : undefined;
+  const zoned = zones.length > 0 || Boolean(page?.content.some((t) => t.pickZone));
 
   return (
     <div className="page">
@@ -74,7 +85,7 @@ export function PickTasksPage() {
       <header className="page__header">
         <div>
           <h1>Pick Tasks</h1>
-          <p className="muted">Each allocation run makes one task: discrete for one order, batch for several orders picked in one walk. Open a task to see its details, one pick per allocation.</p>
+          <p className="muted">Each allocation run makes one task, or one for each pick zone: discrete for one order, batch for several orders picked in one walk. Open a task to see its details, one pick per allocation.</p>
         </div>
       </header>
 
@@ -101,6 +112,14 @@ export function PickTasksPage() {
             <option value="BATCH">Batch</option>
           </select>
         </label>
+        {(zones.length > 0 || query.pickZone) && (
+          <FilterSelect
+            label="Pick zone"
+            value={query.pickZone}
+            options={[...new Set([...zones.map((z) => z.code), query.pickZone])].filter(Boolean).map((code) => ({ value: code, label: code }))}
+            onChange={(pickZone) => updateQuery({ pickZone })}
+          />
+        )}
         <span className="toolbar__count muted" aria-live="polite">
           {page ? `${page.totalElements.toLocaleString()} task${page.totalElements === 1 ? '' : 's'}` : ''}
         </span>
@@ -122,6 +141,7 @@ export function PickTasksPage() {
               <tr>
                 <th scope="col">Task</th>
                 <th scope="col">Method</th>
+                {zoned && <th scope="col">Pick zone</th>}
                 <th scope="col">Orders</th>
                 <th scope="col" className="num">
                   Details
@@ -152,6 +172,7 @@ export function PickTasksPage() {
                   <td>
                     <PickMethodBadge method={t.pickMethod} />
                   </td>
+                  {zoned && <td>{t.pickZone ? <span className="code">{t.pickZone}</span> : <span className="muted">—</span>}</td>}
                   <td>
                     <OrderLinks task={t} />
                   </td>
@@ -174,7 +195,7 @@ export function PickTasksPage() {
           </table>
           {page.content.length === 0 && (
             <div className="empty">
-              <p>{query.q || query.status || query.pickMethod ? 'No pick tasks match your search.' : 'No pick tasks yet. They are created when orders are allocated.'}</p>
+              <p>{query.q || query.status || query.pickMethod || query.pickZone ? 'No pick tasks match your search.' : 'No pick tasks yet. They are created when orders are allocated.'}</p>
             </div>
           )}
         </div>
@@ -196,6 +217,7 @@ function readQuery(params: URLSearchParams): PickTaskQuery {
     q: params.get('q') ?? '',
     status: TASK_STATUSES.find((s) => s.value === status)?.value ?? '',
     pickMethod: method === 'DISCRETE' || method === 'BATCH' ? method : '',
+    pickZone: params.get('pickZone') ?? '',
     size: PAGE_SIZES.includes(size) ? size : PAGE_SIZES[0],
     page: Number.isInteger(page) && page > 0 ? page : 0,
   };
@@ -206,6 +228,7 @@ function writeQuery(q: PickTaskQuery): URLSearchParams {
   if (q.q) params.set('q', q.q);
   if (q.status) params.set('status', q.status);
   if (q.pickMethod) params.set('pickMethod', q.pickMethod);
+  if (q.pickZone) params.set('pickZone', q.pickZone);
   if (q.size !== PAGE_SIZES[0]) params.set('size', String(q.size));
   if (q.page > 0) params.set('page', String(q.page));
   return params;

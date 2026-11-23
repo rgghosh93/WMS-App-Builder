@@ -196,7 +196,7 @@ export function ItemForm({ item, units, onClose, onSaved, onDeleted }: ItemFormP
   );
 
   return (
-    <Drawer title={isNew ? 'New item' : `Edit ${item.itemId}`} onClose={onClose} footer={footer} wide>
+    <Drawer title={isNew ? 'New item' : `Edit ${item.itemId}`} onClose={onClose} footer={footer} wide permission="MASTER_DATA">
       <form id="item-form" className="form" onSubmit={submit} noValidate>
         {formError && (
           <div className="form__error" role="alert">

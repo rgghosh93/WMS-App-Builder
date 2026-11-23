@@ -41,11 +41,15 @@ public class OrderService {
     private final ItemRepository items;
     private final AllocationService allocationService;
     private final OutboundContainers outboundContainers;
+    private final PackingService packing;
+    private final ShippingService shipping;
+    private final PackTaskDetailRepository packDetails;
     private final boolean autoAllocate;
 
     public OrderService(OrderRepository orders, AllocationRepository allocations, PickTaskRepository tasks,
                         PickTaskDetailRepository taskDetails, OrderEventRepository events, ItemRepository items,
                         AllocationService allocationService, OutboundContainers outboundContainers,
+                        PackingService packing, ShippingService shipping, PackTaskDetailRepository packDetails,
                         @Value("${wms.outbound.auto-allocate:true}") boolean autoAllocate) {
         this.orders = orders;
         this.allocations = allocations;
@@ -55,6 +59,9 @@ public class OrderService {
         this.items = items;
         this.allocationService = allocationService;
         this.outboundContainers = outboundContainers;
+        this.packing = packing;
+        this.shipping = shipping;
+        this.packDetails = packDetails;
         this.autoAllocate = autoAllocate;
     }
 
@@ -71,7 +78,7 @@ public class OrderService {
             List<OrderLine> open = o.getLines().stream().filter(l -> l.getStatus() != LineStatus.CANCELLED).toList();
             return new OrderSummary(o.getId(), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
                     o.getPriority(), o.getStatus(), o.getLines().size(),
-                    open.stream().mapToLong(OrderLine::getOrderedQuantity).sum(),
+                    open.stream().mapToLong(OrderLine::neededQuantity).sum(),
                     open.stream().mapToLong(OrderLine::getAllocatedQuantity).sum(),
                     openTasks.getOrDefault(o.getId(), 0L), o.getCreatedAt());
         });
@@ -112,6 +119,12 @@ public class OrderService {
                     taskByAllocation.put(d.getPickedAllocation().getId(), d);
                 }
             });
+            // Reservations split by packing: trace them back to the pick through the packing task.
+            List<UUID> rest = list.stream().map(Allocation::getId).filter(id -> !taskByAllocation.containsKey(id)).toList();
+            if (!rest.isEmpty()) {
+                packDetails.findPicksOfUnpacked(rest).forEach(row -> taskByAllocation.put((UUID) row[0], (PickTaskDetail) row[1]));
+                packDetails.findPicksOfPacked(rest).forEach(row -> taskByAllocation.put((UUID) row[0], (PickTaskDetail) row[1]));
+            }
         }
         return list.stream().map(a -> AllocationView.of(a, taskByAllocation.get(a.getId()))).toList();
     }
@@ -140,6 +153,7 @@ public class OrderService {
         OutboundOrder order = new OutboundOrder(UUID.randomUUID(), number);
         order.setCustomerName(request.customerName().trim());
         order.setRequestedShipDate(request.requestedShipDate());
+        order.setShipTo(request.shipTo() == null ? null : request.shipTo().tidied());
         order.setPriority(request.priority() == null ? 5 : request.priority());
 
         List<OrderRequest.Line> requested = request.lines();
@@ -178,7 +192,7 @@ public class OrderService {
 
     /** Tries again to allocate what is still missing, e.g. after stock arrived. */
     public OrderDetail allocate(UUID id) {
-        OutboundOrder order = load(id);
+        OutboundOrder order = orders.findLocked(id).orElseThrow(() -> ApiException.notFound("Order not found"));
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is cancelled.", Map.of());
         }
@@ -219,19 +233,20 @@ public class OrderService {
             throw ApiException.conflict("Some orders can't be allocated: " + String.join("; ", blocked) + ".",
                     Map.of("orderIds", String.join("; ", blocked)));
         }
-        PickTask task = allocationService.allocateBatch(batch);
+        List<TaskView> created = allocationService.allocateBatch(batch).stream().map(TaskView::of).toList();
         orders.flush();
-        return new BatchAllocation(task == null ? null : TaskView.of(task),
+        return new BatchAllocation(created.isEmpty() ? null : created.getFirst(), created,
                 batch.stream().map(OutboundViews.OrderRef::of).toList());
     }
 
     /**
      * Result of allocating orders as a batch.
      *
-     * @param task   the batch pick task, or null if no stock could be reserved
+     * @param task   the batch pick task, or the first of them; null if no stock could be reserved
+     * @param tasks  all of them: one for each pick zone
      * @param orders each order in the batch with its status afterwards
      */
-    public record BatchAllocation(TaskView task, List<OutboundViews.OrderRef> orders) {
+    public record BatchAllocation(TaskView task, List<TaskView> tasks, List<OutboundViews.OrderRef> orders) {
     }
 
     /** Cancels an order: releases its stock and cancels its open picks. */
@@ -272,18 +287,59 @@ public class OrderService {
         return detail(order);
     }
 
+    /**
+     * Ends an order that can't be completed: everything not picked is given up, and its stock and
+     * pick tasks released. What is already picked is still packed and shipped.
+     */
+    public OrderDetail closeShort(UUID id) {
+        OutboundOrder order = load(id);
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw ApiException.conflict("Order " + order.getOrderNumber() + " is already cancelled.", Map.of());
+        }
+        if (!order.anyPicked()) {
+            throw ApiException.conflict("Nothing is picked for " + order.getOrderNumber() + " yet. Cancel it instead.", Map.of());
+        }
+        if (!order.hasUnpicked()) {
+            throw ApiException.conflict("Everything for " + order.getOrderNumber() + " is already picked.", Map.of());
+        }
+        List<PickTask> orderTasks = tasks.findByOrderId(id);
+        orderTasks.stream().filter(t -> t.getStatus() == PickTaskStatus.IN_PROGRESS && t.hasOpenFor(order)).findFirst()
+                .ifPresent(t -> {
+                    throw ApiException.conflict(t.getTaskNumber() + " is being picked for this order. "
+                            + "Close it short once that is done.", Map.of());
+                });
+        List<Allocation> unpicked = orderTasks.stream().flatMap(t -> t.getDetails().stream())
+                .filter(d -> d.getStatus() == PickDetailStatus.OPEN && d.getOrder().getId().equals(id))
+                .map(PickTaskDetail::getAllocation).toList();
+        for (PickTask task : orderTasks) {
+            task.cancelFor(order);
+        }
+        tasks.flush();
+        long released = unpicked.stream().mapToLong(Allocation::getQuantity).sum();
+        allocations.deleteAll(unpicked);
+        int closed = order.getLines().stream().filter(l -> l.getStatus() != LineStatus.CANCELLED)
+                .mapToInt(OrderLine::closeShort).sum();
+        order.refreshStatus();
+        events.save(new OrderEvent(order, Type.CLOSED_SHORT,
+                "Closed short: %d EA will not be shipped; released %d EA of reserved stock".formatted(closed, released)));
+        orders.flush();
+        return detail(order);
+    }
+
     private OutboundOrder load(UUID id) {
         return orders.findById(id).orElseThrow(() -> ApiException.notFound("Order not found"));
     }
 
     private OrderDetail detail(OutboundOrder o) {
         return new OrderDetail(o.getId(), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
-                o.getPriority(), o.getStatus(),
+                o.getPriority(), o.getStatus(), o.getShipTo(),
                 o.getLines().stream().map(LineView::of).toList(),
                 allocationViews(allocations.findByLine_Order_IdOrderByCreatedAtAsc(o.getId())).stream()
                         .sorted((a, b) -> Integer.compare(a.lineNumber(), b.lineNumber()))
                         .toList(),
                 tasks.findByOrderId(o.getId()).stream().map(TaskView::of).toList(),
+                packing.forOrder(o.getId()),
+                shipping.forOrder(o.getId()),
                 events.findByOrder_IdOrderByOccurredAtAsc(o.getId()).stream().map(EventView::of).toList(),
                 o.getCreatedAt(), o.getUpdatedAt(), o.getVersion());
     }

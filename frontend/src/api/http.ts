@@ -25,18 +25,32 @@ interface ProblemBody {
   errors?: Record<string, string>;
 }
 
+/** Fired when the server refuses a desktop request because of who is, or isn't, signed in. */
+export const SESSION_STALE = 'wms:session-stale';
+
 export async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   headers.set('Accept', 'application/json');
 
-  const response = await fetch(url, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (error) {
+    // Browsers only say "Failed to fetch" when nothing answers.
+    if (init.signal?.aborted) throw error;
+    throw new Error("Can't reach the WMS. Check that it is running and that you are connected, then try again.");
+  }
   if (!response.ok) {
     let problem: ProblemBody = {};
     try {
       problem = await response.json();
     } catch {
       // not JSON; fall back to the status line
+    }
+    // The session may have ended or its permissions changed: let the app look again.
+    if ((response.status === 401 || response.status === 403) && !url.startsWith('/api/rf/') && !url.startsWith('/api/session')) {
+      window.dispatchEvent(new Event(SESSION_STALE));
     }
     throw new ApiError(
       response.status,

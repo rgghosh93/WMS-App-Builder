@@ -51,8 +51,11 @@ public class DemoInventoryLoader implements ApplicationRunner {
     private int pallets;
     private int cartons;
 
+    private final StockLedger ledger;
+
     public DemoInventoryLoader(InventoryRepository inventory, ItemRepository items, LocationRepository locations,
-                               ContainerRepository containers, ContainerTypeRepository containerTypes) {
+                               ContainerRepository containers, ContainerTypeRepository containerTypes, StockLedger ledger) {
+        this.ledger = ledger;
         this.inventory = inventory;
         this.items = items;
         this.locations = locations;
@@ -165,14 +168,19 @@ public class DemoInventoryLoader implements ApplicationRunner {
                     InventoryStatus status, String received) {
         InventoryRecord r = record(itemId, qty, lot, serial, expiry, status, received);
         r.placeIn(container);
-        inventory.save(r);
+        open(inventory.save(r));
     }
 
     private void loose(String locationId, String itemId, int qty, String lot, String serial, String expiry,
                        InventoryStatus status, String received) {
         InventoryRecord r = record(itemId, qty, lot, serial, expiry, status, received);
         r.placeIn(location(locationId));
-        inventory.save(r);
+        open(inventory.save(r));
+    }
+
+    private void open(InventoryRecord r) {
+        ledger.log(StockTransaction.Type.OPENING, r, r.getQuantity(), StockLedger.Place.OUTSIDE, StockLedger.Place.of(r),
+                StockLedger.Note.by(null, null).because("Demo stock"));
     }
 
     private InventoryRecord record(String itemId, int qty, String lot, String serial, String expiry,

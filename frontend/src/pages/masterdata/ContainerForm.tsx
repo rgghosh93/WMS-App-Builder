@@ -152,7 +152,7 @@ export function ContainerForm({ container, types, onClose, onSaved, onDeleted }:
   const statusHint = CONTAINER_STATUSES.find((s) => s.value === values.status)?.hint;
 
   return (
-    <Drawer title={isNew ? 'New container' : `Edit ${container.lpnId}`} onClose={onClose} footer={footer}>
+    <Drawer title={isNew ? 'New container' : `Edit ${container.lpnId}`} onClose={onClose} footer={footer} permission="MASTER_DATA">
       <form id="container-form" className="form" onSubmit={submit} noValidate>
         {formError && (
           <div className="form__error" role="alert">

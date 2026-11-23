@@ -1,4 +1,5 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import {
   DIMENSION_UOMS,
   IDENTIFIER_FIELDS,
@@ -22,6 +23,7 @@ import {
   type WeightUom,
 } from '../../api/measure';
 import { ApiError, errorMessage } from '../../api/http';
+import { listLocationZones, type ZoneOfLocation } from '../../api/zones';
 import { Drawer } from '../../components/Drawer';
 import { Field, sentenceCase } from '../../components/Field';
 import { optionalNumber, positiveIntegerError, positiveNumberError } from '../../forms/validation';
@@ -235,7 +237,7 @@ export function LocationForm({ location, types, onClose, onSaved, onDeleted }: L
   );
 
   return (
-    <Drawer title={isNew ? 'New location' : `Edit ${location.locationId}`} onClose={onClose} footer={footer}>
+    <Drawer title={isNew ? 'New location' : `Edit ${location.locationId}`} onClose={onClose} footer={footer} permission="MASTER_DATA">
       <form id="location-form" className="form" onSubmit={submit} noValidate>
         {formError && (
           <div className="form__error" role="alert">
@@ -420,11 +422,54 @@ export function LocationForm({ location, types, onClose, onSaved, onDeleted }: L
             ))}
           </div>
         </fieldset>
+        {location && <LocationZones locationId={location.id} />}
       </form>
     </Drawer>
   );
 }
 
+/** The zones a location is in, by function. Not the zone in its address. */
+function LocationZones({ locationId }: { locationId: string }) {
+  const [zones, setZones] = useState<ZoneOfLocation[] | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listLocationZones(locationId, controller.signal)
+      .then(setZones)
+      .catch((e) => {
+        if (!controller.signal.aborted) setFailed(errorMessage(e));
+      });
+    return () => controller.abort();
+  }, [locationId]);
+
+  return (
+    <fieldset className="fieldset">
+      <legend>In zones</legend>
+      <p className="field__hint">
+        {failed ?? (!zones ? 'Loading…' : zones.length === 0 ? 'In none. ' : '')}
+        {zones && (
+          <>
+            Change them under <Link to="/master-data/zones">Zones</Link>.
+          </>
+        )}
+      </p>
+      {zones && zones.length > 0 && (
+        <p className="tag-list tag-list--wrap">
+          {zones.map((z) => (
+            <span key={z.zoneId} className="tag">
+              {z.label}:{' '}
+              <Link className="code" to={`/master-data/zones/${z.zoneId}`} title={z.name}>
+                {z.code}
+              </Link>
+              {z.status === 'INACTIVE' && ' (inactive)'}
+            </span>
+          ))}
+        </p>
+      )}
+    </fieldset>
+  );
+}
 
 function initialValues(location: Location | null, types: LocationTypeInfo[]): FormValues {
   const identifiers = Object.fromEntries(

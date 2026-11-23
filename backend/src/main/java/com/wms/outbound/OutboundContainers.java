@@ -7,7 +7,6 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 import com.wms.common.ActiveStatus;
-import com.wms.common.Codes;
 import com.wms.common.api.ApiException;
 import com.wms.inventory.InventoryRepository;
 import com.wms.masterdata.container.Container;
@@ -16,9 +15,7 @@ import com.wms.masterdata.container.ContainerRepository;
 import com.wms.masterdata.container.ContainerStatus;
 import com.wms.masterdata.container.ContainerType;
 import com.wms.masterdata.container.ContainerTypeRepository;
-import com.wms.masterdata.item.ItemRepository;
-import com.wms.masterdata.item.ItemUomRepository;
-import com.wms.masterdata.location.LocationRepository;
+import com.wms.masterdata.container.NewLpnCheck;
 
 /** The containers pickers pick into: reusable totes and the like, and single-use cartons (oLPNs). */
 @Component
@@ -27,18 +24,14 @@ class OutboundContainers {
     private final ContainerRepository containers;
     private final ContainerTypeRepository types;
     private final InventoryRepository inventory;
-    private final LocationRepository locations;
-    private final ItemRepository items;
-    private final ItemUomRepository itemUoms;
+    private final NewLpnCheck newLpns;
 
     OutboundContainers(ContainerRepository containers, ContainerTypeRepository types, InventoryRepository inventory,
-                       LocationRepository locations, ItemRepository items, ItemUomRepository itemUoms) {
+                       NewLpnCheck newLpns) {
         this.containers = containers;
         this.types = types;
         this.inventory = inventory;
-        this.locations = locations;
-        this.items = items;
-        this.itemUoms = itemUoms;
+        this.newLpns = newLpns;
     }
 
     boolean exists(String lpnId) {
@@ -49,17 +42,9 @@ class OutboundContainers {
     void check(String lpnId) {
         Container container = containers.findByLpnId(lpnId).orElse(null);
         if (container == null) {
-            if (lpnId.length() > 40 || !lpnId.matches(Codes.PATTERN)) {
-                throw refuse("That isn't a valid LPN");
-            }
-            // Catch a location or item label scanned by mistake before it becomes a carton.
-            if (locations.findByLocationId(lpnId).isPresent()) {
-                throw refuse(lpnId + " is a location, not a container");
-            }
-            if (items.findByItemId(lpnId).isPresent() || items.findByBarcode(lpnId).isPresent()
-                    || itemUoms.findFirstByBarcode(lpnId).isPresent()) {
-                throw refuse(lpnId + " is an item, not a container");
-            }
+            newLpns.problemWith(lpnId).ifPresent(problem -> {
+                throw refuse(problem);
+            });
             return;
         }
         if (container.getContainerType().getCategory() == ContainerCategory.BIN) {
@@ -77,6 +62,27 @@ class OutboundContainers {
         }
         if (container.getParent() != null) {
             throw refuse(lpnId + " is inside " + container.getParent().getLpnId());
+        }
+    }
+
+    /** Throws unless the LPN is free to be given to a new carton. */
+    void checkNewCarton(String lpnId) {
+        if (exists(lpnId)) {
+            throw refuse(lpnId + " is already used by another container");
+        }
+        check(lpnId);
+    }
+
+    /** An outbound container was emptied by packing: a tote is ready for reuse, a single-use carton is done. */
+    void finish(Container container) {
+        if (inventory.countByContainer_Id(container.getId()) > 0 || containers.countByParent_Id(container.getId()) > 0) {
+            return;
+        }
+        if (container.isPermanent()) {
+            container.setStatus(ContainerStatus.AVAILABLE);
+        } else {
+            container.setStatus(ContainerStatus.RETIRED);
+            container.setCurrentLocation(null);
         }
     }
 

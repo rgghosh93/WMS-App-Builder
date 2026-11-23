@@ -203,7 +203,7 @@ export function ContainerTypeForm({ containerType, onClose, onSaved, onDeleted }
   );
 
   return (
-    <Drawer title={isNew ? 'New container type' : `Edit ${containerType.containerTypeId}`} onClose={onClose} footer={footer}>
+    <Drawer title={isNew ? 'New container type' : `Edit ${containerType.containerTypeId}`} onClose={onClose} footer={footer} permission="MASTER_DATA">
       <form id="container-type-form" className="form" onSubmit={submit} noValidate>
         {formError && (
           <div className="form__error" role="alert">

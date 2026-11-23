@@ -238,6 +238,18 @@ class OrderAllocationTest {
     }
 
     @Test
+    void expiredStockIsNeverAllocated() throws Exception {
+        LocalDate today = LocalDate.now();
+        stock(bars, 7, "GONE", today.minusDays(1).toString(), InventoryStatus.AVAILABLE, shelfA, null);
+        stock(bars, 3, "LAST-DAY", today.toString(), InventoryStatus.AVAILABLE, shelfA, null);
+        create(order("SO-1", line("SKU-BAR", 5, null)))
+                .andExpect(jsonPath("$.allocations", hasSize(2)))
+                .andExpect(jsonPath("$.allocations[?(@.lotNumber == 'LAST-DAY')].quantity").value(3))
+                .andExpect(jsonPath("$.allocations[?(@.lotNumber == 'OLD')].quantity").value(2));
+        create(order("SO-2", line("SKU-BAR", 1, "GONE"))).andExpect(jsonPath("$.status").value("BACKORDERED"));
+    }
+
+    @Test
     void listsOrdersAndPickTasks() throws Exception {
         create(order("SO-1", line("SKU-BAR", 25, null)));
         create(order("SO-2", line("SKU-BAR", 99, null)));

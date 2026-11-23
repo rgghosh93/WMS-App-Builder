@@ -1,7 +1,9 @@
 import { request, type Page } from './http';
 import type { InventoryStatus } from './inventory';
+import type { PackTask } from './packing';
+import type { ShipTo, Shipment } from './shipping';
 
-export type OrderStatus = 'NEW' | 'PARTIALLY_ALLOCATED' | 'ALLOCATED' | 'PICKING' | 'PICKED' | 'BACKORDERED' | 'CANCELLED';
+export type OrderStatus = 'NEW' | 'PARTIALLY_ALLOCATED' | 'ALLOCATED' | 'PICKING' | 'PICKED' | 'PACKING' | 'PACKED' | 'PARTIALLY_SHIPPED' | 'SHIPPED' | 'BACKORDERED' | 'CANCELLED';
 export type LineStatus = OrderStatus;
 export type PickTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'PICKED' | 'COMPLETED' | 'CANCELLED';
 export type PickDetailStatus = 'OPEN' | 'PICKED' | 'SHORT' | 'CANCELLED';
@@ -11,7 +13,7 @@ export type PickMethod = 'DISCRETE' | 'BATCH';
 export function pickMethodLabel(method: PickMethod): string {
   return method === 'BATCH' ? 'Batch' : 'Discrete';
 }
-export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'PICKED' | 'DROPPED' | 'CANCELLED';
+export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'PICKED' | 'DROPPED' | 'PACKED' | 'SHIPPED' | 'CLOSED_SHORT' | 'CANCELLED';
 
 export const ORDER_STATUSES: { value: OrderStatus; label: string; hint: string }[] = [
   { value: 'NEW', label: 'New', hint: 'Received; not allocated yet' },
@@ -19,6 +21,10 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; hint: string }
   { value: 'ALLOCATED', label: 'Allocated', hint: 'Fully allocated, with pick tasks' },
   { value: 'PICKING', label: 'Picking', hint: 'Picking has started; some of it is in outbound containers' },
   { value: 'PICKED', label: 'Picked', hint: 'Everything ordered is picked' },
+  { value: 'PACKING', label: 'Packing', hint: 'Packing has started; some of it is sealed in cartons' },
+  { value: 'PACKED', label: 'Packed', hint: 'Everything ordered is packed and ready to ship' },
+  { value: 'PARTIALLY_SHIPPED', label: 'Partially shipped', hint: 'Some of it has shipped; the rest has not' },
+  { value: 'SHIPPED', label: 'Shipped', hint: 'Everything ordered has shipped' },
   { value: 'BACKORDERED', label: 'Backordered', hint: 'No stock could be reserved' },
   { value: 'CANCELLED', label: 'Cancelled', hint: 'Stock released and tasks cancelled' },
 ];
@@ -79,6 +85,10 @@ export interface OrderLineView {
   orderedQuantity: number;
   allocatedQuantity: number;
   pickedQuantity: number;
+  packedQuantity: number;
+  shippedQuantity: number;
+  /** Closed short: will never be shipped. */
+  closedQuantity: number;
   requestedLot: string | null;
   status: LineStatus;
 }
@@ -141,6 +151,8 @@ export interface PickTaskView {
   id: string;
   taskNumber: string;
   pickMethod: PickMethod;
+  /** Code of the pick zone everything on it is in. */
+  pickZone: string | null;
   /** The orders it picks for, in detail order. */
   orders: OrderRef[];
   status: PickTaskStatus;
@@ -174,9 +186,12 @@ export interface OrderDetail {
   requestedShipDate: string | null;
   priority: number;
   status: OrderStatus;
+  shipTo: ShipTo | null;
   lines: OrderLineView[];
   allocations: AllocationView[];
   tasks: PickTaskView[];
+  packTasks: PackTask[];
+  shipments: Shipment[];
   events: OrderEventView[];
   createdAt: string;
   updatedAt: string;
@@ -189,6 +204,8 @@ export interface OrderInput {
   requestedShipDate: string | null;
   priority: number;
   lines: { itemId: string; quantity: number; requestedLot: string | null }[];
+  /** Where it goes, if known yet. */
+  shipTo?: ShipTo;
 }
 
 export type OrderSortField = 'createdAt' | 'orderNumber' | 'customerName' | 'requestedShipDate' | 'priority' | 'status';
@@ -223,8 +240,10 @@ export function createOrder(input: OrderInput, allocate = true): Promise<OrderDe
 }
 
 export interface BatchAllocation {
-  /** The batch task, or null if no stock could be reserved for any of the orders. */
+  /** The batch task, the first if there are several, or null if no stock could be reserved for any of the orders. */
   task: PickTaskView | null;
+  /** All of them: one for each pick zone. */
+  tasks: PickTaskView[];
   orders: OrderRef[];
 }
 
@@ -240,6 +259,11 @@ export function canAllocate(order: { status: OrderStatus; orderedQuantity: numbe
 
 export function allocateOrder(id: string): Promise<OrderDetail> {
   return request(`/api/orders/${id}/allocate`, { method: 'POST' });
+}
+
+/** Gives up on what isn't picked; what is picked still ships. */
+export function closeOrderShort(id: string): Promise<OrderDetail> {
+  return request(`/api/orders/${id}/close-short`, { method: 'POST' });
 }
 
 export function cancelOrder(id: string): Promise<OrderDetail> {
@@ -273,6 +297,7 @@ export interface PickTaskQuery {
   q: string;
   status: PickTaskStatus | '';
   pickMethod: PickMethod | '';
+  pickZone: string;
   page: number;
   size: number;
 }
@@ -282,6 +307,7 @@ export function listPickTasks(query: PickTaskQuery, signal?: AbortSignal): Promi
   if (query.q) params.set('q', query.q);
   if (query.status) params.set('status', query.status);
   if (query.pickMethod) params.set('pickMethod', query.pickMethod);
+  if (query.pickZone) params.set('pickZone', query.pickZone);
   params.set('page', String(query.page));
   params.set('size', String(query.size));
   return request(`/api/pick-tasks?${params}`, { signal });

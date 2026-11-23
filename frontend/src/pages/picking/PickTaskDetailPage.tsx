@@ -81,6 +81,12 @@ export function PickTaskDetailPage() {
             </ul>
           </dd>
         </div>
+        {task.pickZone && (
+          <div>
+            <dt>Pick zone</dt>
+            <dd className="code">{task.pickZone}</dd>
+          </div>
+        )}
         <div>
           <dt>Details</dt>
           <dd>{task.detailCount}</dd>

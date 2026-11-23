@@ -15,6 +15,7 @@ import { errorMessage, type Page } from '../../api/http';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
+import { Can } from '../../session/SessionContext';
 import { ContainerForm } from './ContainerForm';
 import { ContainerRangeForm } from './ContainerRangeForm';
 
@@ -126,14 +127,18 @@ export function ContainersPage() {
           <p className="muted">Permanent containers in the facility, such as totes and ASRS bins, identified by LPN.</p>
         </div>
         <div className="button-row">
-          <button type="button" className="button" onClick={() => setEditing({ mode: 'range' })}>
-            <ListPlus size={16} aria-hidden="true" />
-            Add a range
-          </button>
-          <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-            <Plus size={16} aria-hidden="true" />
-            New container
-          </button>
+          <Can permission="MASTER_DATA">
+            <button type="button" className="button" onClick={() => setEditing({ mode: 'range' })}>
+              <ListPlus size={16} aria-hidden="true" />
+              Add a range
+            </button>
+          </Can>
+          <Can permission="MASTER_DATA">
+            <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+              <Plus size={16} aria-hidden="true" />
+              New container
+            </button>
+          </Can>
         </div>
       </header>
 
@@ -226,12 +231,16 @@ export function ContainersPage() {
                 <>
                   <p>No containers yet.</p>
                   <div className="button-row">
-                    <button type="button" className="button" onClick={() => setEditing({ mode: 'range' })}>
-                      Add a range
-                    </button>
-                    <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-                      Create the first container
-                    </button>
+                    <Can permission="MASTER_DATA">
+                      <button type="button" className="button" onClick={() => setEditing({ mode: 'range' })}>
+                        Add a range
+                      </button>
+                    </Can>
+                    <Can permission="MASTER_DATA">
+                      <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+                        Create the first container
+                      </button>
+                    </Can>
                   </div>
                 </>
               )}

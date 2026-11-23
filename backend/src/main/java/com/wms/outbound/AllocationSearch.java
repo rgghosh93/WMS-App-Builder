@@ -42,8 +42,7 @@ public record AllocationSearch(String q, OrderStatus orderStatus, InventoryStatu
                 place.select(cb.literal(1)).where(cb.or(cb.equal(task.get("allocation"), root),
                         cb.equal(task.get("pickedAllocation"), root)), cb.or(
                         cb.like(cb.lower(location.get("locationId")), like, '\\'),
-                        cb.like(cb.lower(lpn.get("lpnId")), like, '\\'),
-                        cb.like(cb.lower(stockLpn.get("lpnId")), like, '\\')));
+                        cb.like(cb.lower(lpn.get("lpnId")), like, '\\')));
 
                 predicates.add(cb.or(
                         cb.like(cb.lower(order.get("orderNumber")), like, '\\'),
@@ -51,6 +50,7 @@ public record AllocationSearch(String q, OrderStatus orderStatus, InventoryStatu
                         cb.like(cb.lower(item.get("itemId")), like, '\\'),
                         cb.like(cb.lower(stock.get("lotNumber")), like, '\\'),
                         cb.like(cb.lower(stock.get("serialNumber")), like, '\\'),
+                        cb.like(cb.lower(stockLpn.get("lpnId")), like, '\\'),
                         cb.exists(place)));
             }
             if (orderStatus != null) {

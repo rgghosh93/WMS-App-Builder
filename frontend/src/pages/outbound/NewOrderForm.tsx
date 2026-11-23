@@ -7,6 +7,8 @@ import { Drawer } from '../../components/Drawer';
 import { Field, sentenceCase } from '../../components/Field';
 import { SearchPicker } from '../../components/SearchPicker';
 import { positiveIntegerError } from '../../forms/validation';
+import type { ShipTo } from '../../api/shipping';
+import { AddressFields, EMPTY_ADDRESS, addressErrors, isBlankAddress, toShipTo } from '../shipping/AddressFields';
 
 interface NewOrderFormProps {
   onClose: () => void;
@@ -36,6 +38,7 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
   const [priority, setPriority] = useState(5);
   const [allocateNow, setAllocateNow] = useState(true);
   const [lines, setLines] = useState<LineValues[]>(() => [newLine()]);
+  const [address, setAddress] = useState(EMPTY_ADDRESS);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,6 +59,10 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
     const found: Errors = {};
     if (orderNumber.trim() && !CODE_PATTERN.test(orderNumber.trim())) found.orderNumber = "Use letters, numbers, '-', '_' or '.'";
     if (!customer.trim()) found.customerName = 'Enter the customer';
+    // The address is optional here, but once started it has to be complete.
+    if (!isBlankAddress(address)) {
+      Object.entries(addressErrors(address)).forEach(([field, message]) => (found[`shipTo.${field}`] = message));
+    }
     if (lines.length === 0) found.lines = 'Add at least one line';
     lines.forEach((line, i) => {
       if (!line.item) found[`lines[${i}].itemId`] = 'Choose an item';
@@ -77,6 +84,7 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
       customerName: customer.trim(),
       requestedShipDate: shipDate || null,
       priority,
+      shipTo: isBlankAddress(address) ? undefined : toShipTo(address),
       lines: lines.map((l) => ({
         itemId: l.item!.itemId,
         quantity: Number(l.quantity),
@@ -172,6 +180,25 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
             </select>
           </Field>
         </div>
+
+        <fieldset className="fieldset">
+          <legend>Ship to</legend>
+          <p className="field__hint">Optional now, but needed before the order can ship.</p>
+          <AddressFields
+            values={address}
+            errors={
+              Object.fromEntries(
+                Object.entries(errors)
+                  .filter(([key]) => key.startsWith('shipTo.'))
+                  .map(([key, message]) => [key.slice('shipTo.'.length), message]),
+              ) as Partial<Record<keyof ShipTo, string>>
+            }
+            onChange={(field, value) => {
+              setAddress((a) => ({ ...a, [field]: value }));
+              clear(`shipTo.${field}`);
+            }}
+          />
+        </fieldset>
 
         <fieldset className="fieldset">
           <legend>Lines</legend>

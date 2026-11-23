@@ -107,7 +107,7 @@ export function UomForm({ uom, onClose, onSaved, onDeleted }: UomFormProps) {
   );
 
   return (
-    <Drawer title={isNew ? 'New unit of measure' : `Edit ${uom.uomCode}`} onClose={onClose} footer={footer}>
+    <Drawer title={isNew ? 'New unit of measure' : `Edit ${uom.uomCode}`} onClose={onClose} footer={footer} permission="MASTER_DATA">
       <form id="uom-form" className="form" onSubmit={submit} noValidate>
         {formError && (
           <div className="form__error" role="alert">

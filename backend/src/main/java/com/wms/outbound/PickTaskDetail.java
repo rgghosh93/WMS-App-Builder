@@ -164,6 +164,13 @@ public class PickTaskDetail {
         allocation = null;
     }
 
+    /** The reservation is gone: its stock was split into cartons or reported missing. */
+    void forgetPicked(Allocation allocation) {
+        if (pickedAllocation != null && pickedAllocation.getId().equals(allocation.getId())) {
+            pickedAllocation = null;
+        }
+    }
+
     void setPickedAllocation(Allocation pickedAllocation) {
         this.pickedAllocation = pickedAllocation;
     }

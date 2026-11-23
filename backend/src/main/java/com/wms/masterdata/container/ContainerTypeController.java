@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.wms.common.ActiveStatus;
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -67,17 +69,20 @@ public class ContainerTypeController {
     }
 
     @PostMapping
+    @Requires(Permission.MASTER_DATA)
     public ResponseEntity<ContainerTypeResponse> create(@Valid @RequestBody ContainerTypeRequest request) {
         ContainerTypeResponse created = ContainerTypeResponse.from(service.create(request));
         return ResponseEntity.created(URI.create("/api/container-types/" + created.id())).body(created);
     }
 
     @PutMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     public ContainerTypeResponse update(@PathVariable UUID id, @Valid @RequestBody ContainerTypeRequest request) {
         return ContainerTypeResponse.from(service.update(id, request));
     }
 
     @DeleteMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

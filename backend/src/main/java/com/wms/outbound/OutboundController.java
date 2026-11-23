@@ -23,6 +23,8 @@ import com.wms.outbound.OutboundViews.AllocationView;
 import com.wms.outbound.OutboundViews.OrderDetail;
 import com.wms.outbound.OutboundViews.OrderSummary;
 import com.wms.outbound.OutboundViews.TaskView;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -73,6 +75,7 @@ public class OutboundController {
      * {@code allocate=false} (e.g. to hold it for a batch with other orders).
      */
     @PostMapping("/api/orders")
+    @Requires(Permission.ORDERS)
     public ResponseEntity<OrderDetail> create(@Valid @RequestBody OrderRequest request,
                                               @RequestParam(required = false) Boolean allocate) {
         OrderDetail created = allocate == null ? orders.create(request) : orders.create(request, allocate);
@@ -80,12 +83,14 @@ public class OutboundController {
     }
 
     @PostMapping("/api/orders/{id}/allocate")
+    @Requires(Permission.ORDERS)
     public OrderDetail allocate(@PathVariable UUID id) {
         return orders.allocate(id);
     }
 
     /** Allocates several orders onto one batch pick task. */
     @PostMapping("/api/orders/batch-allocate")
+    @Requires(Permission.ORDERS)
     public OrderService.BatchAllocation allocateBatch(@RequestBody BatchRequest request) {
         return orders.allocateBatch(request.orderIds());
     }
@@ -94,8 +99,16 @@ public class OutboundController {
     }
 
     @PostMapping("/api/orders/{id}/cancel")
+    @Requires(Permission.ORDERS)
     public OrderDetail cancel(@PathVariable UUID id) {
         return orders.cancel(id);
+    }
+
+    /** Gives up on what isn't picked; the rest still ships. */
+    @PostMapping("/api/orders/{id}/close-short")
+    @Requires(Permission.ORDERS)
+    public OrderDetail closeShort(@PathVariable UUID id) {
+        return orders.closeShort(id);
     }
 
     /**
@@ -138,10 +151,11 @@ public class OutboundController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) PickTaskStatus status,
             @RequestParam(required = false) PickMethod pickMethod,
+            @RequestParam(required = false) String pickZone,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
         PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE),
                 Sort.by(Sort.Direction.DESC, "taskNumber"));
-        return PageResponse.of(orders.searchTasks(new PickTaskSearch(q, status, pickMethod), pageable), t -> t);
+        return PageResponse.of(orders.searchTasks(new PickTaskSearch(q, status, pickMethod, pickZone), pageable), t -> t);
     }
 }

@@ -52,7 +52,7 @@ public final class OutboundViews {
     /**
      * One order in the list.
      *
-     * @param orderedQuantity   eaches ordered across open lines
+     * @param orderedQuantity   eaches to ship across open lines (ordered, less closed short)
      * @param allocatedQuantity eaches with stock reserved
      * @param openTaskCount     pick tasks waiting to be done
      */
@@ -77,12 +77,15 @@ public final class OutboundViews {
             int orderedQuantity,
             int allocatedQuantity,
             int pickedQuantity,
+            int packedQuantity,
+            int shippedQuantity,
+            int closedQuantity,
             String requestedLot,
             LineStatus status) {
 
         static LineView of(OrderLine l) {
             return new LineView(l.getId(), l.getLineNumber(), ItemRef.of(l.getItem()), l.getOrderedQuantity(),
-                    l.getAllocatedQuantity(), l.getPickedQuantity(), l.getRequestedLot(), l.getStatus());
+                    l.getAllocatedQuantity(), l.getPickedQuantity(), l.getPackedQuantity(), l.getShippedQuantity(), l.getClosedQuantity(), l.getRequestedLot(), l.getStatus());
         }
     }
 
@@ -160,6 +163,7 @@ public final class OutboundViews {
             UUID id,
             String taskNumber,
             PickMethod pickMethod,
+            String pickZone,
             List<OrderRef> orders,
             PickTaskStatus status,
             int detailCount,
@@ -178,6 +182,7 @@ public final class OutboundViews {
         static TaskView of(PickTask t) {
             List<TaskDetailView> details = t.getDetails().stream().map(TaskDetailView::of).toList();
             return new TaskView(t.getId(), t.getTaskNumber(), t.getPickMethod(),
+                    t.getPickZone() == null ? null : t.getPickZone().getCode(),
                     t.orders().stream().map(OrderRef::of).toList(), t.getStatus(), details.size(),
                     (int) details.stream().map(d -> d.order().id() + "#" + d.lineNumber()).distinct().count(),
                     (int) details.stream().map(d -> d.fromLocation().id()).distinct().count(),
@@ -201,9 +206,12 @@ public final class OutboundViews {
             LocalDate requestedShipDate,
             int priority,
             OrderStatus status,
+            ShipTo shipTo,
             List<LineView> lines,
             List<AllocationView> allocations,
             List<TaskView> tasks,
+            List<PackingViews.PackTaskView> packTasks,
+            List<ShippingViews.ShipmentView> shipments,
             List<EventView> events,
             Instant createdAt,
             Instant updatedAt,

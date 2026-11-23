@@ -3,6 +3,7 @@ package com.wms.outbound;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -15,26 +16,34 @@ import com.wms.common.api.ApiException;
 import com.wms.inventory.InventoryRecord;
 import com.wms.inventory.InventoryRepository;
 import com.wms.inventory.InventoryStatus;
+import com.wms.inventory.LocationLocks;
+import com.wms.inventory.StockLedger;
+import com.wms.inventory.StockLedger.Note;
+import com.wms.inventory.StockLedger.Place;
+import com.wms.inventory.StockTransaction;
 import com.wms.masterdata.container.Container;
-import com.wms.masterdata.container.ContainerRepository;
 import com.wms.masterdata.item.Item;
-import com.wms.masterdata.item.ItemUom;
+import com.wms.masterdata.item.ItemScan;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.location.LocationRepository;
 import com.wms.masterdata.location.LocationType;
+import com.wms.masterdata.zone.ZoneFunction;
+import com.wms.masterdata.zone.Zones;
 import com.wms.outbound.OrderEvent.Type;
 import com.wms.outbound.OutboundViews.ItemRef;
 import com.wms.outbound.PickingViews.ContainerTypeOption;
 import com.wms.outbound.PickingViews.DropDirective;
-import com.wms.outbound.PickingViews.ItemScan;
 import com.wms.outbound.PickingViews.NewContainer;
 import com.wms.outbound.PickingViews.PickDirective;
+import com.wms.outbound.PickingViews.PickZone;
 import com.wms.outbound.PickingViews.PickingState;
 import com.wms.outbound.PickingViews.Step;
 import com.wms.outbound.PickingViews.TaskProgress;
 import com.wms.outbound.PickingViews.UomQuantity;
 import com.wms.users.AppUser;
 import com.wms.users.AppUserRepository;
+import com.wms.work.Directions;
+import com.wms.work.Directions.Candidate;
 
 /**
  * The picking transaction on a mobile device: scan an outbound container, get assigned a task,
@@ -47,7 +56,7 @@ import com.wms.users.AppUserRepository;
 @Transactional
 public class PickingService {
 
-    private static final Comparator<PickTaskDetail> WALK_ORDER = Comparator
+    static final Comparator<PickTaskDetail> WALK_ORDER = Comparator
             .comparing((PickTaskDetail d) -> d.getFromLocation().getLocationId())
             .thenComparing(d -> d.getFromContainer() == null ? "" : d.getFromContainer().getLpnId())
             .thenComparing(PickTaskDetail::getDetailNumber);
@@ -56,22 +65,37 @@ public class PickingService {
     private final AllocationRepository allocations;
     private final InventoryRepository inventory;
     private final LocationRepository locations;
-    private final ContainerRepository containers;
     private final OutboundContainers outbound;
     private final AppUserRepository users;
     private final OrderEventRepository events;
+    private final PackTaskRepository packTasks;
+    private final PackingService packing;
+    private final StockLedger ledger;
+    private final LocationLocks locks;
+    private final Zones zones;
+    private final OrderRepository orders;
+    private final Directions directions;
 
     PickingService(PickTaskRepository tasks, AllocationRepository allocations, InventoryRepository inventory,
-                   LocationRepository locations, ContainerRepository containers, OutboundContainers outbound,
-                   AppUserRepository users, OrderEventRepository events) {
+                   LocationRepository locations, OutboundContainers outbound,
+                   AppUserRepository users, OrderEventRepository events, PackTaskRepository packTasks,
+                   PackingService packing,
+                   StockLedger ledger, LocationLocks locks, Zones zones, OrderRepository orders,
+                   Directions directions) {
+        this.ledger = ledger;
+        this.locks = locks;
+        this.zones = zones;
+        this.orders = orders;
+        this.directions = directions;
         this.tasks = tasks;
         this.allocations = allocations;
         this.inventory = inventory;
         this.locations = locations;
-        this.containers = containers;
         this.outbound = outbound;
         this.users = users;
         this.events = events;
+        this.packTasks = packTasks;
+        this.packing = packing;
     }
 
     /**
@@ -92,6 +116,24 @@ public class PickingService {
 
     /** Starts picking into a container: the most urgent waiting task is assigned to the picker. */
     public PickingState start(UUID userId, String scannedLpn, UUID cartonTypeId) {
+        return start(userId, scannedLpn, cartonTypeId, false, null, null);
+    }
+
+    /** Pick zones, and how many tasks wait in each. */
+    @Transactional(readOnly = true)
+    public List<PickZone> zones() {
+        Map<UUID, Long> waiting = new HashMap<>();
+        tasks.countWaitingByZone().forEach(row -> waiting.put((UUID) row[0], (Long) row[1]));
+        return zones.active(ZoneFunction.PICKING).stream()
+                .map(z -> new PickZone(z.getId(), z.getCode(), z.getName(), waiting.getOrDefault(z.getId(), 0L))).toList();
+    }
+
+    /**
+     * @param takeOver if someone else is picking into the container, carry on with their task
+     * @param zoneId   only tasks in this pick zone; any if null
+     * @param taskId   this task and no other; the most urgent if null
+     */
+    public PickingState start(UUID userId, String scannedLpn, UUID cartonTypeId, boolean takeOver, UUID zoneId, UUID taskId) {
         PickTask current = tasks.findActiveFor(userId).orElse(null);
         if (current != null) {
             throw ApiException.conflict("You are already picking " + current.getTaskNumber() + ".", Map.of());
@@ -100,10 +142,24 @@ public class PickingService {
         if (lpnId == null) {
             throw ApiException.invalid("Scan an outbound container", Map.of("lpnId", "scan an outbound container"));
         }
+        PickTask theirs = tasks.findActiveInto(lpnId).orElse(null);
+        if (theirs != null) {
+            String picker = theirs.getAssignedTo().getDisplayName();
+            if (!takeOver) {
+                throw ApiException.conflict(theirs.getTaskNumber() + " is being picked into " + lpnId + " by " + picker + ".",
+                        Map.of("assignedTo", picker));
+            }
+            theirs.reassign(users.getReferenceById(userId));
+            tasks.flush();
+            return stateOf(theirs);
+        }
         outbound.check(lpnId);
-        List<UUID> waiting = tasks.findWaitingIds();
+        List<UUID> forMe = directions.arrange(userId, tasks.findWaiting(taskId == null ? zoneId : null).stream()
+                .map(row -> new Candidate((UUID) row[0], ((Number) row[1]).intValue())).toList());
+        List<UUID> waiting = taskId == null ? forMe : forMe.contains(taskId) ? List.of(taskId) : List.of();
         if (waiting.isEmpty()) {
-            throw ApiException.conflict("No pick tasks are waiting.", Map.of());
+            throw ApiException.conflict(taskId != null ? "That pick task isn't waiting for you any more."
+                    : zoneId == null ? "No pick tasks are waiting." : "No pick tasks are waiting in that zone.", Map.of());
         }
         if (cartonTypeId == null && !outbound.exists(lpnId)) {
             List<ContainerTypeOption> types = outbound.cartonTypes().stream().map(ContainerTypeOption::of).toList();
@@ -114,15 +170,26 @@ public class PickingService {
                     new NewContainer(lpnId, types));
         }
 
+        directions.starting(userId);
         Container container = outbound.open(lpnId, cartonTypeId);
         AppUser user = users.getReferenceById(userId);
-        for (UUID taskId : waiting) {
+        for (UUID waitingId : waiting) {
+            if (isLocked(waitingId)) {
+                continue;
+            }
             // Claims the task only if nobody else has in the meantime.
-            if (tasks.claim(taskId, user, container, Instant.now()) == 1) {
-                return stateOf(tasks.findById(taskId).orElseThrow());
+            if (tasks.claim(waitingId, user, container, Instant.now()) == 1) {
+                return stateOf(tasks.findById(waitingId).orElseThrow());
             }
         }
-        throw ApiException.conflict("No pick tasks are waiting.", Map.of());
+        throw ApiException.conflict(waiting.stream().anyMatch(this::isLocked)
+                ? "The waiting pick tasks are at locations being counted." : "No pick tasks are waiting.", Map.of());
+    }
+
+    /** Whether a task picks from a location being counted. */
+    private boolean isLocked(UUID taskId) {
+        return !locks.locked(tasks.findById(taskId).orElseThrow().getDetails().stream()
+                .filter(d -> d.getStatus() == PickDetailStatus.OPEN).map(d -> d.getFromLocation().getId()).toList()).isEmpty();
     }
 
     /** Gives the task back, as long as nothing has been picked yet. */
@@ -140,6 +207,10 @@ public class PickingService {
 
     /** Checks the scans for a pick and moves the stock into the outbound container. */
     public PickingState confirm(UUID userId, Confirm request) {
+        // Others may be picking the same order in other pick zones.
+        if (request.detailId() != null) {
+            orders.findIdOfPick(request.detailId()).ifPresent(orders::findLocked);
+        }
         PickTask task = active(userId);
         PickTaskDetail detail = task.getDetails().stream()
                 .filter(d -> d.getId().equals(request.detailId()) && d.getStatus() == PickDetailStatus.OPEN)
@@ -150,6 +221,9 @@ public class PickingService {
 
         boolean shortPick = Boolean.TRUE.equals(request.shortPick());
         checkPlace(detail, request);
+        if (locks.isLocked(detail.getFromLocation().getId())) {
+            throw ApiException.conflict(detail.getFromLocation().getLocationId() + " is being counted. Pick there when that is done.", Map.of());
+        }
         int eaches = 0;
         if (request.quantity() == null || request.quantity() < 0 || (request.quantity() == 0 && !shortPick)) {
             throw invalid("quantity", "Enter the quantity picked");
@@ -157,10 +231,13 @@ public class PickingService {
         if (request.quantity() > 0) {
             eaches = checkedEaches(detail, request);
             InventoryRecord source = detail.getAllocation().getInventory();
-            if (source.getStatus() != InventoryStatus.AVAILABLE) {
-                throw ApiException.conflict("This stock was put on hold after it was allocated. "
+            if (!source.isUsable()) {
+                throw ApiException.conflict((source.isExpired() ? "This stock has expired. "
+                        : "This stock was put on hold after it was allocated. ")
                         + "Leave it and report the pick short.", Map.of());
             }
+            ledger.log(StockTransaction.Type.PICK, source, eaches, Place.of(source), Place.in(task.getToContainer()),
+                    Note.by(userId, task.getTaskNumber()));
             move(detail, eaches, task.getToContainer());
         }
 
@@ -170,7 +247,7 @@ public class PickingService {
         if (detail.remaining() == 0) {
             detail.close(PickDetailStatus.PICKED);
         } else if (shortPick) {
-            closeShort(detail);
+            closeShort(detail, userId);
         }
         if (detail.getStatus() != PickDetailStatus.OPEN) {
             record(detail, task, user);
@@ -212,6 +289,7 @@ public class PickingService {
         task.orders().stream().filter(o -> task.anyPickedFor(o)).forEach(o -> events.save(new OrderEvent(o, Type.DROPPED,
                 "%s dropped at pack station %s (%s)".formatted(container.getLpnId(), station.getLocationId(), task.getTaskNumber()))));
         tasks.flush();
+        packing.createFor(task, station);
         return stateOf(null);
     }
 
@@ -235,7 +313,7 @@ public class PickingService {
     /** The confirmed quantity in eaches, after checking the item, serial and amount. */
     private static int checkedEaches(PickTaskDetail detail, Confirm request) {
         String scanned = Codes.normalize(request.itemBarcode());
-        ItemScan scan = itemScans(detail.getItem()).stream().filter(s -> s.value().equalsIgnoreCase(scanned)).findFirst()
+        ItemScan scan = ItemScan.of(detail.getItem()).stream().filter(s -> s.value().equalsIgnoreCase(scanned)).findFirst()
                 .orElseThrow(() -> invalid("itemBarcode", "Wrong item. Pick " + detail.getItem().getItemId()));
         if (detail.getSerialNumber() != null
                 && !detail.getSerialNumber().equalsIgnoreCase(Codes.normalize(request.serialNumber()))) {
@@ -302,7 +380,7 @@ public class PickingService {
      * have been, so it isn't allocated again before someone counts it, and the line needs
      * that much stock again.
      */
-    private void closeShort(PickTaskDetail detail) {
+    private void closeShort(PickTaskDetail detail, UUID userId) {
         int missing = detail.remaining();
         Allocation source = detail.getAllocation();
         InventoryRecord record = source.getInventory();
@@ -315,13 +393,16 @@ public class PickingService {
         if (record.getStatus() != InventoryStatus.AVAILABLE) {
             return;
         }
+        String why = "Short pick";
+        ledger.log(StockTransaction.Type.HOLD, record, Math.min(missing, record.getQuantity()), Place.of(record), Place.of(record),
+                InventoryStatus.AVAILABLE, InventoryStatus.ON_HOLD, Note.by(userId, detail.getTask().getTaskNumber()).because(why));
         if (record.getQuantity() <= missing) {
-            record.setStatus(InventoryStatus.ON_HOLD);
+            record.hold(InventoryStatus.ON_HOLD, why + ", " + detail.getTask().getTaskNumber());
             return;
         }
         record.setQuantity(record.getQuantity() - missing);
         InventoryRecord held = copyOf(record, missing);
-        held.setStatus(InventoryStatus.ON_HOLD);
+        held.hold(InventoryStatus.ON_HOLD, why + ", " + detail.getTask().getTaskNumber());
         if (record.getContainer() != null) {
             held.placeIn(record.getContainer());
         } else {
@@ -330,13 +411,8 @@ public class PickingService {
         inventory.save(held);
     }
 
-    private static InventoryRecord copyOf(InventoryRecord r, int quantity) {
-        InventoryRecord copy = new InventoryRecord(UUID.randomUUID(), r.getItem(), quantity);
-        copy.setLotNumber(r.getLotNumber());
-        copy.setExpiryDate(r.getExpiryDate());
-        copy.setStatus(r.getStatus());
-        copy.setReceivedAt(r.getReceivedAt());
-        return copy;
+    static InventoryRecord copyOf(InventoryRecord r, int quantity) {
+        return r.copy(quantity);
     }
 
     private void record(PickTaskDetail detail, PickTask task, AppUser user) {
@@ -378,34 +454,20 @@ public class PickingService {
         int closed = (int) details.stream().filter(d -> d.getStatus() != PickDetailStatus.OPEN).count();
         int orders = (int) details.stream().map(d -> d.getOrder().getId()).distinct().count();
         Container to = task.getToContainer();
-        return new TaskProgress(task.getId(), task.getTaskNumber(), task.getPickMethod(), orders, to.getLpnId(),
+        return new TaskProgress(task.getId(), task.getTaskNumber(), task.getPickMethod(),
+                task.getPickZone() == null ? null : task.getPickZone().getCode(), orders, to.getLpnId(),
                 to.getContainerType().getDescription(), closed, details.size(),
                 task.getStatus() == PickTaskStatus.IN_PROGRESS && !task.anyPicked());
     }
 
     private static PickDirective directive(PickTaskDetail d) {
         Item item = d.getItem();
-        List<ItemScan> scans = itemScans(item);
+        List<ItemScan> scans = ItemScan.of(item);
         return new PickDirective(d.getId(), d.getDetailNumber(), d.getOrder().getOrderNumber(),
                 d.getOrder().getCustomerName(), d.getFromLocation().getLocationId(),
                 d.getFromContainer() == null ? null : d.getFromContainer().getLpnId(), ItemRef.of(item), d.getLotNumber(),
                 d.getAllocation().getInventory().getExpiryDate(), d.getSerialNumber(), d.getQuantity(),
                 d.getPickedQuantity(), d.remaining(), inUnits(d.remaining(), scans), scans);
-    }
-
-    /** Everything a picker can scan for an item: its barcode or ID as eaches, and each packaging level's barcode. */
-    static List<ItemScan> itemScans(Item item) {
-        List<ItemScan> scans = new ArrayList<>();
-        if (item.getBarcode() != null) {
-            scans.add(new ItemScan(item.getBarcode(), "EA", 1));
-        }
-        scans.add(new ItemScan(item.getItemId(), "EA", 1));
-        for (ItemUom pack : item.getUoms()) {
-            if (pack.getBarcode() != null) {
-                scans.add(new ItemScan(pack.getBarcode(), pack.getUom().getUomCode(), pack.getQuantity()));
-            }
-        }
-        return scans;
     }
 
     /** Splits eaches into the largest units first, e.g. 27 EA at 6 per case is 4 CS and 3 EA. */
@@ -424,10 +486,12 @@ public class PickingService {
         return result;
     }
 
-    /** The pack station holding the fewest containers. */
+    /** The pack station with the fewest containers waiting to be packed. */
     private String suggestedStation() {
+        Map<UUID, Long> waiting = new HashMap<>();
+        packTasks.countOpenByStation().forEach(row -> waiting.put((UUID) row[0], ((Number) row[1]).longValue()));
         return locations.findByTypeOrderByLocationId(LocationType.PACKING).stream()
-                .min(Comparator.comparingLong((Location l) -> containers.countByCurrentLocation_Id(l.getId()))
+                .min(Comparator.comparingLong((Location l) -> waiting.getOrDefault(l.getId(), 0L))
                         .thenComparing(Location::getLocationId))
                 .map(Location::getLocationId).orElse(null);
     }

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
+import com.wms.masterdata.zone.Zone;
 import com.wms.users.AppUser;
 
 import jakarta.persistence.CascadeType;
@@ -49,6 +50,11 @@ public class PickTask {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private PickTaskStatus status;
+
+    /** The pick zone everything on it is in; null if none. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pick_zone_id")
+    private Zone pickZone;
 
     /** The picker working on it. */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -91,10 +97,11 @@ public class PickTask {
         // for JPA
     }
 
-    PickTask(UUID id, String taskNumber, PickMethod pickMethod) {
+    PickTask(UUID id, String taskNumber, PickMethod pickMethod, Zone pickZone) {
         this.id = id;
         this.taskNumber = taskNumber;
         this.pickMethod = pickMethod;
+        this.pickZone = pickZone;
         this.status = PickTaskStatus.OPEN;
     }
 
@@ -142,6 +149,23 @@ public class PickTask {
         return cancelled.size();
     }
 
+    boolean hasOpenFor(OutboundOrder order) {
+        return details.stream().anyMatch(d -> d.getStatus() == PickDetailStatus.OPEN && d.getOrder().getId().equals(order.getId()));
+    }
+
+    /** Someone else carries on with it. */
+    void reassign(AppUser user) {
+        assignedTo = user;
+    }
+
+    /** Takes one pick away; a task with nothing left to pick is cancelled. */
+    void cancelDetail(PickTaskDetail detail) {
+        detail.cancel();
+        if (status == PickTaskStatus.OPEN && noneOpen()) {
+            status = PickTaskStatus.CANCELLED;
+        }
+    }
+
     boolean noneOpen() {
         return details.stream().noneMatch(d -> d.getStatus() == PickDetailStatus.OPEN);
     }
@@ -183,6 +207,11 @@ public class PickTask {
     }
 
     /** The orders this task picks for, in detail order. */
+    /** As urgent as the most urgent of its orders. */
+    int priority() {
+        return orders().stream().mapToInt(OutboundOrder::getPriority).min().orElse(9);
+    }
+
     public List<OutboundOrder> orders() {
         Map<UUID, OutboundOrder> orders = new LinkedHashMap<>();
         details.forEach(d -> orders.putIfAbsent(d.getOrder().getId(), d.getOrder()));
@@ -197,6 +226,7 @@ public class PickTask {
     public String getTaskNumber() { return taskNumber; }
     public PickMethod getPickMethod() { return pickMethod; }
     public PickTaskStatus getStatus() { return status; }
+    public Zone getPickZone() { return pickZone; }
     public AppUser getAssignedTo() { return assignedTo; }
     public Container getToContainer() { return toContainer; }
     public Location getDropLocation() { return dropLocation; }

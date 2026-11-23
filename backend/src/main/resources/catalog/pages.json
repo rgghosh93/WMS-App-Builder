@@ -6,14 +6,14 @@
     "icon": "database",
     "pages": [
       { "id": "facilities", "title": "Facilities", "description": "Warehouses and their settings", "route": "/master-data/facilities", "status": "PLANNED" },
-      { "id": "zones", "title": "Zones", "description": "Storage, pick and staging zones", "route": "/master-data/zones", "status": "PLANNED" },
+      { "id": "zones", "title": "Zones", "description": "Groups of locations for allocation, picking, put-away and counting", "route": "/master-data/zones", "status": "AVAILABLE" },
       { "id": "locations", "title": "Locations", "description": "Storage locations, their identifiers and dimensions", "route": "/master-data/locations", "status": "AVAILABLE" },
       { "id": "items", "title": "Items", "description": "SKUs, barcodes, tracking and unit dimensions", "route": "/master-data/items", "status": "AVAILABLE" },
       { "id": "container-types", "title": "Container Types", "description": "Pallets, cartons, totes, bins and their sizes", "route": "/master-data/container-types", "status": "AVAILABLE" },
       { "id": "containers", "title": "Containers", "description": "Permanent totes, bins and other containers, by LPN", "route": "/master-data/containers", "status": "AVAILABLE" },
       { "id": "units-of-measure", "title": "Units of Measure", "description": "Eaches, inner packs, cases and pallets", "route": "/master-data/units-of-measure", "status": "AVAILABLE" },
       { "id": "clients", "title": "Clients", "description": "Inventory owners and 3PL clients", "route": "/master-data/clients", "status": "PLANNED" },
-      { "id": "carriers", "title": "Carriers", "description": "Carriers and shipping services", "route": "/master-data/carriers", "status": "PLANNED" },
+      { "id": "carriers", "title": "Carriers", "description": "Carriers and shipping services", "route": "/master-data/carriers", "status": "AVAILABLE" },
       { "id": "vendors", "title": "Vendors", "description": "Suppliers that ship to the warehouse", "route": "/master-data/vendors", "status": "PLANNED" }
     ]
   },
@@ -23,9 +23,9 @@
     "description": "Expected receipts and receiving",
     "icon": "inbound",
     "pages": [
-      { "id": "asns", "title": "ASNs", "description": "Advance shipping notices from vendors", "route": "/inbound/asns", "status": "PLANNED" },
+      { "id": "asns", "title": "ASNs", "description": "Advance shipping notices from vendors", "route": "/inbound/asns", "status": "AVAILABLE" },
       { "id": "purchase-orders", "title": "Purchase Orders", "description": "Open purchase orders to receive against", "route": "/inbound/purchase-orders", "status": "PLANNED" },
-      { "id": "receiving", "title": "Receiving", "description": "Receive goods and create LPNs", "route": "/inbound/receiving", "status": "PLANNED" },
+      { "id": "receiving", "title": "Receiving", "description": "Receive ASNs on a mobile device, into LPNs", "route": "/rf/receiving", "status": "AVAILABLE" },
       { "id": "quality-hold", "title": "Quality Hold", "description": "Received goods waiting for QC", "route": "/inbound/quality-hold", "status": "PLANNED" }
     ]
   },
@@ -35,8 +35,8 @@
     "description": "Moving received goods into storage",
     "icon": "putaway",
     "pages": [
-      { "id": "putaway-tasks", "title": "Put-away Tasks", "description": "Directed put-away work", "route": "/putaway/tasks", "status": "PLANNED" },
-      { "id": "putaway-rules", "title": "Put-away Rules", "description": "How the system chooses storage locations", "route": "/putaway/rules", "status": "PLANNED" }
+      { "id": "putaway-tasks", "title": "Put-away Tasks", "description": "Directed put-away work", "route": "/putaway/tasks", "status": "AVAILABLE" },
+      { "id": "putaway-rules", "title": "Put-away Rules", "description": "How the system chooses storage locations", "route": "/putaway/rules", "status": "AVAILABLE" }
     ]
   },
   {
@@ -47,11 +47,14 @@
     "pages": [
       { "id": "inventory-by-location", "title": "Inventory by Location", "description": "What each location holds: items, LPNs and what is inside them", "route": "/inventory/by-location", "status": "AVAILABLE" },
       { "id": "inventory-by-container", "title": "Inventory by Container", "description": "Every LPN holding stock, where it is and what is inside it", "route": "/inventory/by-container", "status": "AVAILABLE" },
+      { "id": "inventory-by-item", "title": "Inventory by Item", "description": "How much there is of each item and lot, and what is available", "route": "/inventory/by-item", "status": "AVAILABLE" },
+      { "id": "stock-history", "title": "Stock History", "description": "Every change to stock: what, where, why, who and when", "route": "/inventory/history", "status": "AVAILABLE" },
       { "id": "warehouse-map", "title": "Warehouse Map", "description": "Floor plan with utilization and task layers", "route": "/inventory/map", "status": "PLANNED" },
-      { "id": "inventory-moves", "title": "Inventory Moves", "description": "Move stock between locations", "route": "/inventory/moves", "status": "PLANNED" },
-      { "id": "adjustments", "title": "Adjustments", "description": "Quantity adjustments with reason codes", "route": "/inventory/adjustments", "status": "PLANNED" },
-      { "id": "inventory-holds", "title": "Holds", "description": "Place and release inventory holds", "route": "/inventory/holds", "status": "PLANNED" },
-      { "id": "cycle-counts", "title": "Cycle Counts", "description": "Plan and record cycle counts", "route": "/inventory/cycle-counts", "status": "PLANNED" }
+      { "id": "inventory-moves", "title": "Inventory Moves", "description": "Move stock between locations", "route": "/inventory/moves", "status": "AVAILABLE" },
+      { "id": "adjustments", "title": "Adjustments", "description": "Quantity adjustments with reason codes", "route": "/inventory/adjustments", "status": "AVAILABLE" },
+      { "id": "inventory-holds", "title": "Holds", "description": "Place and release inventory holds", "route": "/inventory/holds", "status": "AVAILABLE" },
+      { "id": "cycle-counts", "title": "Cycle Counts", "description": "Plan and record cycle counts", "route": "/inventory/counts", "status": "AVAILABLE" },
+      { "id": "reason-codes", "title": "Reason Codes", "description": "Why stock is adjusted, held and released, and the approval limit", "route": "/inventory/reasons", "status": "AVAILABLE" }
     ]
   },
   {
@@ -82,9 +85,10 @@
     "description": "Packing, labels and shipment confirmation",
     "icon": "shipping",
     "pages": [
-      { "id": "packing", "title": "Packing", "description": "Pack station work and cartonization", "route": "/pack-ship/packing", "status": "PLANNED" },
-      { "id": "shipments", "title": "Shipments", "description": "Shipments, labels and ship confirm", "route": "/pack-ship/shipments", "status": "PLANNED" },
-      { "id": "manifests", "title": "Manifests", "description": "Carrier manifests and close-out", "route": "/pack-ship/manifests", "status": "PLANNED" }
+      { "id": "pack-tasks", "title": "Packing Tasks", "description": "Containers at pack stations, what is packed and the cartons made", "route": "/pack-ship/packing-tasks", "status": "AVAILABLE" },
+      { "id": "pack-station", "title": "Pack Station", "description": "Sign in at a pack station to pack containers into cartons", "route": "/pack", "status": "AVAILABLE" },
+      { "id": "shipments", "title": "Shipments", "description": "Packed cartons going out: carrier, tracking and labels", "route": "/pack-ship/shipments", "status": "AVAILABLE" },
+      { "id": "manifests", "title": "Manifests", "description": "What was loaded with each carrier, and ship confirm", "route": "/pack-ship/manifests", "status": "AVAILABLE" }
     ]
   },
   {
@@ -93,8 +97,8 @@
     "description": "Keeping pick locations stocked",
     "icon": "replenishment",
     "pages": [
-      { "id": "replenishment-tasks", "title": "Replenishment Tasks", "description": "Open replenishment work", "route": "/replenishment/tasks", "status": "PLANNED" },
-      { "id": "replenishment-rules", "title": "Replenishment Rules", "description": "Min/max and demand-based settings", "route": "/replenishment/rules", "status": "PLANNED" }
+      { "id": "replenishment-tasks", "title": "Replenishment Tasks", "description": "Open replenishment work", "route": "/replenishment/tasks", "status": "AVAILABLE" },
+      { "id": "replenishment-rules", "title": "Replenishment Rules", "description": "Minimum and maximum in pick locations, and filling for orders", "route": "/replenishment/rules", "status": "AVAILABLE" }
     ]
   },
   {
@@ -103,7 +107,8 @@
     "description": "All warehouse work in one queue",
     "icon": "tasks",
     "pages": [
-      { "id": "task-queue", "title": "Task Queue", "description": "Prioritize and assign warehouse tasks", "route": "/tasks/queue", "status": "PLANNED" }
+      { "id": "task-queue", "title": "Task Queue", "description": "Prioritize and assign warehouse tasks", "route": "/tasks/queue", "status": "AVAILABLE" },
+      { "id": "task-settings", "title": "Task Settings", "description": "How urgent each kind of work is, and what people are offered next", "route": "/tasks/settings", "status": "AVAILABLE" }
     ]
   },
   {
@@ -170,8 +175,8 @@
     "description": "Users, security and templates",
     "icon": "admin",
     "pages": [
-      { "id": "users", "title": "Users", "description": "User accounts and facility access", "route": "/admin/users", "status": "PLANNED" },
-      { "id": "roles", "title": "Roles", "description": "Roles and permissions", "route": "/admin/roles", "status": "PLANNED" },
+      { "id": "users", "title": "Users", "description": "Who can sign in, and with which roles", "route": "/admin/users", "status": "AVAILABLE", "requires": "USERS" },
+      { "id": "roles", "title": "Roles", "description": "Roles and permissions", "route": "/admin/roles", "status": "AVAILABLE", "requires": "USERS" },
       { "id": "audit-log", "title": "Audit Log", "description": "Who changed what, and when", "route": "/admin/audit-log", "status": "PLANNED" },
       { "id": "label-templates", "title": "Label Templates", "description": "Label and document templates", "route": "/admin/label-templates", "status": "PLANNED" }
     ]

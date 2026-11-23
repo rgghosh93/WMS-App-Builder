@@ -32,7 +32,7 @@ public record LocationResponse(
         Instant updatedAt,
         long version) {
 
-    static LocationResponse from(Location l) {
+    public static LocationResponse from(Location l) {
         return new LocationResponse(
                 l.getId(), l.getLocationId(), l.getType(),
                 l.getArea(), l.getZone(), l.getAisle(), l.getBay(), l.getLevel(), l.getPosition(),

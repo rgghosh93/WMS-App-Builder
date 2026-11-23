@@ -17,6 +17,7 @@ import { errorMessage, type Page } from '../../api/http';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
+import { Can } from '../../session/SessionContext';
 import { ContainerTypeForm } from './ContainerTypeForm';
 
 const COLUMNS: Column<ContainerTypeSortField>[] = [
@@ -111,10 +112,12 @@ export function ContainerTypesPage() {
           <h1>Container Types</h1>
           <p className="muted">Kinds of containers that hold inventory: pallets, cartons, totes, bins and more.</p>
         </div>
-        <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-          <Plus size={16} aria-hidden="true" />
-          New container type
-        </button>
+        <Can permission="MASTER_DATA">
+          <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+            <Plus size={16} aria-hidden="true" />
+            New container type
+          </button>
+        </Can>
       </header>
 
       {notice && (
@@ -207,9 +210,11 @@ export function ContainerTypesPage() {
               ) : (
                 <>
                   <p>No container types yet.</p>
-                  <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-                    Create the first container type
-                  </button>
+                  <Can permission="MASTER_DATA">
+                    <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+                      Create the first container type
+                    </button>
+                  </Can>
                 </>
               )}
             </div>

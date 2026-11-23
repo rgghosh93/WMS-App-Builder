@@ -42,6 +42,16 @@ public class OrderLine {
     @Column(name = "picked_quantity", nullable = false)
     private int pickedQuantity;
 
+    @Column(name = "packed_quantity", nullable = false)
+    private int packedQuantity;
+
+    @Column(name = "shipped_quantity", nullable = false)
+    private int shippedQuantity;
+
+    /** How much will never be shipped, because the order was closed short. */
+    @Column(name = "closed_quantity", nullable = false)
+    private int closedQuantity;
+
     /** Only allocate this lot, if set. */
     @Column(name = "requested_lot", length = 40)
     private String requestedLot;
@@ -64,8 +74,31 @@ public class OrderLine {
         this.status = LineStatus.NEW;
     }
 
+    /** Eaches that still need stock. */
     public int remaining() {
-        return orderedQuantity - allocatedQuantity;
+        return neededQuantity() - allocatedQuantity;
+    }
+
+    /** Eaches to ship: what was ordered, less what was closed short. */
+    public int neededQuantity() {
+        return orderedQuantity - closedQuantity;
+    }
+
+    /**
+     * Gives up on everything not picked yet.
+     *
+     * @return eaches given up
+     */
+    int closeShort() {
+        int before = closedQuantity;
+        closedQuantity = orderedQuantity - pickedQuantity;
+        allocatedQuantity = pickedQuantity;
+        if (pickedQuantity == 0) {
+            status = LineStatus.CANCELLED;
+        } else {
+            refreshStatus();
+        }
+        return closedQuantity - before;
     }
 
     /** Records more allocated stock and sets the line's status after an allocation run. */
@@ -86,10 +119,33 @@ public class OrderLine {
         refreshStatus();
     }
 
+    /** Records stock sealed in a shipping carton. */
+    void packed(int quantity) {
+        packedQuantity += quantity;
+        refreshStatus();
+    }
+
+    /** Records stock that has left the building. */
+    void shipped(int quantity) {
+        shippedQuantity += quantity;
+        refreshStatus();
+    }
+
+    /** Picked stock turned out to be missing at packing, so the line needs it again. */
+    void unpicked(int quantity) {
+        pickedQuantity -= quantity;
+        allocatedQuantity -= quantity;
+        refreshStatus();
+    }
+
     private void refreshStatus() {
-        if (pickedQuantity >= orderedQuantity) {
+        if (shippedQuantity >= neededQuantity()) {
+            status = LineStatus.SHIPPED;
+        } else if (packedQuantity >= neededQuantity()) {
+            status = LineStatus.PACKED;
+        } else if (pickedQuantity >= neededQuantity()) {
             status = LineStatus.PICKED;
-        } else if (allocatedQuantity >= orderedQuantity) {
+        } else if (allocatedQuantity >= neededQuantity()) {
             status = LineStatus.ALLOCATED;
         } else if (allocatedQuantity > 0) {
             status = LineStatus.PARTIALLY_ALLOCATED;
@@ -107,7 +163,10 @@ public class OrderLine {
     public OutboundOrder getOrder() { return order; }
     public int getLineNumber() { return lineNumber; }
     public Item getItem() { return item; }
+    public int getClosedQuantity() { return closedQuantity; }
     public int getOrderedQuantity() { return orderedQuantity; }
+    public int getShippedQuantity() { return shippedQuantity; }
+    public int getPackedQuantity() { return packedQuantity; }
     public int getPickedQuantity() { return pickedQuantity; }
     public int getAllocatedQuantity() { return allocatedQuantity; }
     public String getRequestedLot() { return requestedLot; }

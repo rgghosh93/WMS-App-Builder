@@ -6,6 +6,8 @@ import java.util.Locale;
 
 import org.springframework.data.jpa.domain.Specification;
 
+import com.wms.common.Codes;
+
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -18,8 +20,9 @@ import jakarta.persistence.criteria.Subquery;
  *                   number, item, from-location and LPN of any of the task's details
  * @param status     exact task status
  * @param pickMethod discrete or batch
+ * @param pickZone   code of the pick zone
  */
-public record PickTaskSearch(String q, PickTaskStatus status, PickMethod pickMethod) {
+public record PickTaskSearch(String q, PickTaskStatus status, PickMethod pickMethod, String pickZone) {
 
     Specification<PickTask> toSpecification() {
         return (root, query, cb) -> {
@@ -50,6 +53,9 @@ public record PickTaskSearch(String q, PickTaskStatus status, PickMethod pickMet
             }
             if (pickMethod != null) {
                 predicates.add(cb.equal(root.get("pickMethod"), pickMethod));
+            }
+            if (pickZone != null && !pickZone.isBlank()) {
+                predicates.add(cb.equal(root.join("pickZone", JoinType.INNER).get("code"), Codes.normalize(pickZone)));
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

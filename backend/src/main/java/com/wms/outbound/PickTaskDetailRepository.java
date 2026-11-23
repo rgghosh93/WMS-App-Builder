@@ -2,6 +2,7 @@ package com.wms.outbound;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -14,4 +15,6 @@ public interface PickTaskDetailRepository extends JpaRepository<PickTaskDetail, 
     @EntityGraph(attributePaths = {"task"})
     @Query("select d from PickTaskDetail d where d.allocation.id in :allocationIds or d.pickedAllocation.id in :allocationIds")
     List<PickTaskDetail> findByAllocations(Collection<UUID> allocationIds);
+
+    Optional<PickTaskDetail> findFirstByAllocation_Id(UUID allocationId);
 }

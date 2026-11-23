@@ -4,7 +4,6 @@ import java.time.Duration;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -43,7 +42,7 @@ public class DeviceSessionController {
     public ResponseEntity<DeviceUser> signIn(@Valid @RequestBody SignInRequest body, HttpServletRequest request) {
         DeviceSessionService.SignIn signIn = service.signIn(body.userCode(), body.pin());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookie(signIn.token(), DeviceSessionService.SESSION_LENGTH, request))
+                .header(HttpHeaders.SET_COOKIE, cookie(signIn.token(), SessionStore.LENGTH, request))
                 .body(signIn.user());
     }
 
@@ -62,13 +61,6 @@ public class DeviceSessionController {
     }
 
     private static String cookie(String value, Duration maxAge, HttpServletRequest request) {
-        return ResponseCookie.from(COOKIE, value)
-                .httpOnly(true)
-                .secure(request.isSecure())
-                .sameSite("Strict")
-                .path("/api/rf")
-                .maxAge(maxAge)
-                .build()
-                .toString();
+        return SessionStore.cookie(COOKIE, "/api/rf", value, maxAge, request);
     }
 }

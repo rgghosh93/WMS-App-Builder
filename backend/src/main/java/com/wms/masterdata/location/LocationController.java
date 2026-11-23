@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -69,17 +71,20 @@ public class LocationController {
     }
 
     @PostMapping
+    @Requires(Permission.MASTER_DATA)
     public ResponseEntity<LocationResponse> create(@Valid @RequestBody LocationRequest request) {
         LocationResponse created = LocationResponse.from(service.create(request));
         return ResponseEntity.created(URI.create("/api/locations/" + created.id())).body(created);
     }
 
     @PutMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     public LocationResponse update(@PathVariable UUID id, @Valid @RequestBody LocationRequest request) {
         return LocationResponse.from(service.update(id, request));
     }
 
     @DeleteMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

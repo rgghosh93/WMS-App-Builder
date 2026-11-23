@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { listUoms, uomKindLabel, type Uom } from '../../api/uoms';
 import { errorMessage } from '../../api/http';
+import { Can } from '../../session/SessionContext';
 import { UomForm } from './UomForm';
 
 type LoadState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; uoms: Uom[] };
@@ -54,10 +55,12 @@ export function UomsPage() {
             The units stock is handled in. How many eaches each unit holds is set per item, under the item's packaging.
           </p>
         </div>
-        <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-          <Plus size={16} aria-hidden="true" />
-          New unit
-        </button>
+        <Can permission="MASTER_DATA">
+          <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+            <Plus size={16} aria-hidden="true" />
+            New unit
+          </button>
+        </Can>
       </header>
 
       {notice && (

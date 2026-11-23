@@ -5,16 +5,20 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
-/** One sign-in on one device. Only a hash of its token is stored. */
+/** One sign-in on one device, or on the desktop. Only a hash of its token is stored. */
 @Entity
 @Table(name = "device_sessions")
 public class DeviceSession {
+
+    enum Kind { DEVICE, DESKTOP }
 
     @Id
     private UUID id;
@@ -26,6 +30,10 @@ public class DeviceSession {
     @Column(name = "token_hash", nullable = false, length = 64)
     private String tokenHash;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private Kind kind;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -36,9 +44,10 @@ public class DeviceSession {
         // for JPA
     }
 
-    DeviceSession(AppUser user, String tokenHash, Instant createdAt, Instant expiresAt) {
+    DeviceSession(AppUser user, Kind kind, String tokenHash, Instant createdAt, Instant expiresAt) {
         this.id = UUID.randomUUID();
         this.user = user;
+        this.kind = kind;
         this.tokenHash = tokenHash;
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;

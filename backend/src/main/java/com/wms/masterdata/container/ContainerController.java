@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -74,6 +76,7 @@ public class ContainerController {
     }
 
     @PostMapping
+    @Requires(Permission.MASTER_DATA)
     public ResponseEntity<ContainerResponse> create(@Valid @RequestBody ContainerRequest request) {
         ContainerResponse created = service.create(request);
         return ResponseEntity.created(URI.create("/api/containers/" + created.id())).body(created);
@@ -81,17 +84,20 @@ public class ContainerController {
 
     /** Creates a numbered run of containers, e.g. TOTE00001 to TOTE00500. */
     @PostMapping("/range")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.CREATED)
     public ContainerService.RangeResult createRange(@Valid @RequestBody ContainerRangeRequest request) {
         return service.createRange(request);
     }
 
     @PutMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     public ContainerResponse update(@PathVariable UUID id, @Valid @RequestBody ContainerRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

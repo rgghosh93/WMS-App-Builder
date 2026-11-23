@@ -2,11 +2,15 @@ package com.wms.inventory;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+
+import jakarta.persistence.LockModeType;
 
 public interface InventoryRepository extends JpaRepository<InventoryRecord, UUID> {
 
@@ -18,9 +22,22 @@ public interface InventoryRepository extends JpaRepository<InventoryRecord, UUID
     @EntityGraph(attributePaths = {"item"})
     List<InventoryRecord> findByContainer_IdIn(Collection<UUID> containerIds);
 
+    /** Loads and locks stock, so reservations and corrections of it take turns. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from InventoryRecord i where i.id in :ids order by i.id")
+    List<InventoryRecord> findLocked(Collection<UUID> ids);
+
+    List<InventoryRecord> findByItem_IdAndLotNumber(UUID itemId, String lotNumber);
+
+    List<InventoryRecord> findByItem_Id(UUID itemId);
+
+    Optional<InventoryRecord> findByItem_IdAndSerialNumber(UUID itemId, String serialNumber);
+
     long countByLocation_Id(UUID locationId);
 
     long countByContainer_Id(UUID containerId);
+
+    boolean existsByItem_IdAndSerialNumber(UUID itemId, String serialNumber);
 
     @Query("select coalesce(sum(i.quantity), 0) from InventoryRecord i where i.item.id = :itemId")
     long sumQuantityByItem(UUID itemId);

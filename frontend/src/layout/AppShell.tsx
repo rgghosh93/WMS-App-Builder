@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
-import { Menu, Warehouse } from 'lucide-react';
+import { KeyRound, LogOut, Menu, Warehouse } from 'lucide-react';
+import { useSession } from '../session/SessionContext';
 import { Sidebar } from './Sidebar';
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const session = useSession();
 
   return (
     <div className="shell">
@@ -22,6 +24,17 @@ export function AppShell() {
           <Warehouse size={22} aria-hidden="true" strokeWidth={1.75} />
           <span>WMS</span>
         </Link>
+        {session && (
+          <div className="topbar__user">
+            <span className="topbar__name">{session.user.displayName}</span>
+            <button type="button" className="icon-button" aria-label="Change password" title="Change password" onClick={session.changePassword}>
+              <KeyRound size={18} aria-hidden="true" />
+            </button>
+            <button type="button" className="icon-button" aria-label="Sign out" title="Sign out" onClick={session.signOut}>
+              <LogOut size={18} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="shell__body">

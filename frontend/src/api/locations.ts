@@ -4,7 +4,7 @@ import type { DimensionUom, VolumeUom, WeightUom } from './measure';
 export { DIMENSION_UOMS, formatDimensions } from './measure';
 export type { DimensionUom } from './measure';
 
-export type LocationType = 'STORAGE' | 'PACKING';
+export type LocationType = 'STORAGE' | 'RECEIVING' | 'PACKING' | 'DOCK';
 export type IdentifierField = 'area' | 'zone' | 'aisle' | 'bay' | 'level' | 'position';
 
 export const IDENTIFIER_FIELDS: IdentifierField[] = ['area', 'zone', 'aisle', 'bay', 'level', 'position'];

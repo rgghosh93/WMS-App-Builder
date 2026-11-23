@@ -2,15 +2,16 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PickDirective, PickingState, TaskProgress } from '../../api/rf';
+import type { DeviceUser, PickDirective, PickingState, PickZone, TaskProgress } from '../../api/rf';
 import { RfApp } from './RfApp';
 
-const USER = { id: 'u1', userCode: 'ANN', displayName: 'Ann Lee' };
+const USER: DeviceUser = { id: 'u1', userCode: 'ANN', displayName: 'Ann Lee' };
 const WAITING: PickingState = { step: 'SCAN_CONTAINER', waitingTasks: 2, task: null, pick: null, drop: null, newContainer: null };
 const TASK: TaskProgress = {
   id: 't1',
   taskNumber: 'PT000009',
   pickMethod: 'DISCRETE',
+  pickZone: null,
   orderCount: 1,
   toLpnId: 'TOTE00001',
   toContainerType: 'Standard picking tote',
@@ -77,11 +78,15 @@ let state: PickingState;
 /** Replies to the next POSTs, by path. */
 let replies: Record<string, Reply[]>;
 
+let zones: PickZone[];
+
 beforeEach(() => {
   calls = [];
   signedIn = true;
   state = WAITING;
   replies = {};
+  zones = [];
+  localStorage.clear();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init: RequestInit = {}) => {
@@ -92,6 +97,7 @@ beforeEach(() => {
       if (method === 'GET' && !signedIn) return json({ detail: 'Sign in to continue' }, 401);
       if (path === '/api/rf/session' && method === 'GET') return json(USER);
       if (path === '/api/rf/picking' && method === 'GET') return json(state);
+      if (path === '/api/rf/picking/zones') return json(zones);
       const reply = replies[path]?.shift();
       return reply ? json(reply.body, reply.status) : json({ detail: 'Not found' }, 404);
     }),
@@ -144,6 +150,50 @@ describe('Signing in', () => {
   });
 });
 
+describe('Transactions', () => {
+  it('are only those the person may use', async () => {
+    USER.permissions = ['DEVICE_PICK', 'DEVICE_LOAD'];
+    renderAt('/rf');
+    const menu = await screen.findByRole('navigation', { name: 'Transactions' });
+    expect(within(menu).getAllByRole('link').map((l) => l.textContent)).toEqual(['Picking', 'Loading']);
+    USER.permissions = undefined;
+  });
+});
+
+describe('Pick zones', () => {
+  it('keep a picker to one zone, and are remembered', async () => {
+    zones = [
+      { id: 'z1', code: 'EAST', name: 'East side', waiting: 1 },
+      { id: 'z2', code: 'WEST', name: 'West side', waiting: 0 },
+    ];
+    const user = userEvent.setup();
+    renderAt('/rf/picking');
+    const choice = await screen.findByLabelText('Pick zone');
+    expect(screen.getByText('2 pick tasks waiting')).toBeInTheDocument();
+    await user.selectOptions(choice, 'z2');
+    expect(screen.getByText('No pick tasks are waiting in WEST.')).toBeInTheDocument();
+    await user.selectOptions(choice, 'z1');
+    expect(screen.getByText('1 pick task waiting in EAST')).toBeInTheDocument();
+    expect(localStorage.getItem('wms.pickZone')).toBe('z1');
+    replies['/api/rf/picking/start'] = [{ body: picking(BARS, { pickZone: 'EAST' }) }];
+    await scan(user, 'Container', 'TOTE00001');
+    expect(await screen.findByText('Zone EAST')).toBeInTheDocument();
+    expect(sent('/api/rf/picking/start')[0]).toMatchObject({ lpnId: 'TOTE00001', zoneId: 'z1' });
+  });
+
+  it('are forgotten when the zone is gone', async () => {
+    localStorage.setItem('wms.pickZone', 'gone');
+    zones = [{ id: 'z1', code: 'EAST', name: 'East side', waiting: 1 }];
+    const user = userEvent.setup();
+    renderAt('/rf/picking');
+    expect(await screen.findByLabelText('Pick zone')).toHaveValue('');
+    replies['/api/rf/picking/start'] = [{ body: picking(BARS) }];
+    await scan(user, 'Container', 'TOTE00001');
+    await screen.findByRole('heading', { name: 'PT000009' });
+    expect(sent('/api/rf/picking/start')[0]).not.toHaveProperty('zoneId');
+  });
+});
+
 describe('Picking', () => {
   it('walks a task from container to pack station', async () => {
     const user = userEvent.setup();
@@ -190,7 +240,7 @@ describe('Picking', () => {
     expect(await screen.findByText('TOTE00001 dropped at DC1-PACK-01. PT000009 is complete.')).toBeInTheDocument();
     expect(screen.getByLabelText('Container')).toBeInTheDocument();
 
-    expect(sent('/api/rf/picking/start')).toEqual([{ lpnId: 'tote00001', containerTypeId: null }]);
+    expect(sent('/api/rf/picking/start')).toEqual([{ lpnId: 'tote00001', containerTypeId: null, takeOver: false }]);
     expect(sent('/api/rf/picking/confirm')).toEqual([
       expect.objectContaining({ detailId: 'd1', pickedSoFar: 0, itemBarcode: '111006', quantity: 4, shortPick: false }),
       expect.objectContaining({ detailId: 'd1', pickedSoFar: 24, itemBarcode: '111000', quantity: 3, shortPick: false }),
@@ -276,7 +326,7 @@ describe('Picking', () => {
     await scan(user, 'Container', 'OLPN-1');
     await user.click(await screen.findByRole('button', { name: /CTN-M/ }));
     expect(await screen.findByLabelText('Scan location')).toBeInTheDocument();
-    expect(sent('/api/rf/picking/start')[1]).toEqual({ lpnId: 'OLPN-1', containerTypeId: 'ct1' });
+    expect(sent('/api/rf/picking/start')[1]).toEqual({ lpnId: 'OLPN-1', containerTypeId: 'ct1', takeOver: false });
   });
 
   it('shows why a container or pack station was refused', async () => {
@@ -298,6 +348,22 @@ describe('Picking', () => {
     await scan(user, /Put 27 EA/, '27');
     expect(await screen.findByLabelText('Pack station')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('This pick has changed.');
+  });
+
+  it('asks before taking over a task someone else is picking', async () => {
+    const taken = { status: 409, body: { detail: 'PT000009 is being picked into T9 by Bob Ray.', errors: { assignedTo: 'Bob Ray' } } };
+    replies['/api/rf/picking/start'] = [taken, taken, { body: picking(BARS, { toLpnId: 'T9' }) }];
+    const user = userEvent.setup();
+    renderAt('/rf/picking');
+    await scan(user, 'Container', 't9');
+    const ask = await screen.findByRole('group', { name: 'Take over' });
+    expect(ask).toHaveTextContent('being picked into T9 by Bob Ray');
+    await user.click(within(ask).getByRole('button', { name: 'Leave it' }));
+    expect(screen.queryByRole('group', { name: 'Take over' })).not.toBeInTheDocument();
+    await scan(user, 'Container', 't9');
+    await user.click(await screen.findByRole('button', { name: 'Take over T9' }));
+    expect(await screen.findByLabelText('Scan location')).toBeInTheDocument();
+    expect(sent('/api/rf/picking/start').map((b) => b!.takeOver)).toEqual([false, false, true]);
   });
 
   it('gives a task back', async () => {

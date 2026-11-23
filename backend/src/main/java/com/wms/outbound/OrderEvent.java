@@ -16,7 +16,7 @@ import jakarta.persistence.Table;
 @Table(name = "order_events")
 public class OrderEvent {
 
-    public enum Type { RECEIVED, ALLOCATED, SHORT, TASKS_CREATED, PICKED, DROPPED, CANCELLED }
+    public enum Type { RECEIVED, ALLOCATED, SHORT, TASKS_CREATED, PICKED, DROPPED, PACKED, SHIPPED, CLOSED_SHORT, CANCELLED }
 
     @Id
     private UUID id;

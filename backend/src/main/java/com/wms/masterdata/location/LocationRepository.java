@@ -13,6 +13,8 @@ public interface LocationRepository extends JpaRepository<Location, UUID>, JpaSp
 
     List<Location> findByTypeOrderByLocationId(LocationType type);
 
+    List<Location> findByTypeAndAreaAndZoneOrderByLocationId(LocationType type, String area, String zone);
+
     boolean existsByType(LocationType type);
 
     Optional<Location> findByTypeAndAreaAndZoneAndAisleAndBayAndLevelAndPosition(

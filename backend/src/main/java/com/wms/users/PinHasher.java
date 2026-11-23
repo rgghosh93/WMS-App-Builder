@@ -10,22 +10,32 @@ import javax.crypto.spec.PBEKeySpec;
 
 import org.springframework.stereotype.Component;
 
-/** Hashes PINs with salted PBKDF2. Stored as {@code pbkdf2$iterations$salt$hash}. */
+/** Hashes PINs and passwords with salted PBKDF2. Stored as {@code pbkdf2$iterations$salt$hash}. */
 @Component
 public class PinHasher {
 
     private static final int ITERATIONS = 210_000;
+    /** Passwords protect more and are entered less often, so they take more work. */
+    private static final int PASSWORD_ITERATIONS = 600_000;
     private static final int SALT_BYTES = 16;
     private static final int HASH_BITS = 256;
 
     private final SecureRandom random = new SecureRandom();
 
     public String hash(String pin) {
+        return hash(pin, ITERATIONS);
+    }
+
+    public String hashPassword(String password) {
+        return hash(password, PASSWORD_ITERATIONS);
+    }
+
+    private String hash(String pin, int iterations) {
         byte[] salt = new byte[SALT_BYTES];
         random.nextBytes(salt);
         Base64.Encoder base64 = Base64.getEncoder();
-        return "pbkdf2$" + ITERATIONS + "$" + base64.encodeToString(salt) + "$"
-                + base64.encodeToString(derive(pin, salt, ITERATIONS));
+        return "pbkdf2$" + iterations + "$" + base64.encodeToString(salt) + "$"
+                + base64.encodeToString(derive(pin, salt, iterations));
     }
 
     public boolean matches(String pin, String stored) {

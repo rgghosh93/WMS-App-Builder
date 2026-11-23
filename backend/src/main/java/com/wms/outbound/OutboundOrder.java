@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -39,6 +40,10 @@ public class OutboundOrder {
     /** 1 (most urgent) to 9. */
     @Column(nullable = false)
     private int priority;
+
+    /** Where it goes; null until known. */
+    @Embedded
+    private ShipTo shipTo;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
@@ -84,6 +89,14 @@ public class OutboundOrder {
         List<OrderLine> open = lines.stream().filter(l -> l.getStatus() != LineStatus.CANCELLED).toList();
         if (open.isEmpty()) {
             status = OrderStatus.CANCELLED;
+        } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.SHIPPED)) {
+            status = OrderStatus.SHIPPED;
+        } else if (open.stream().anyMatch(l -> l.getShippedQuantity() > 0)) {
+            status = OrderStatus.PARTIALLY_SHIPPED;
+        } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.PACKED)) {
+            status = OrderStatus.PACKED;
+        } else if (open.stream().anyMatch(l -> l.getPackedQuantity() > 0)) {
+            status = OrderStatus.PACKING;
         } else if (open.stream().allMatch(l -> l.getStatus() == LineStatus.PICKED)) {
             status = OrderStatus.PICKED;
         } else if (anyPicked()) {
@@ -104,6 +117,11 @@ public class OutboundOrder {
         return lines.stream().anyMatch(l -> l.getPickedQuantity() > 0);
     }
 
+    /** Whether any open line has something that isn't picked. */
+    boolean hasUnpicked() {
+        return lines.stream().anyMatch(l -> l.getStatus() != LineStatus.CANCELLED && l.getPickedQuantity() < l.neededQuantity());
+    }
+
     /** Whether any open line still needs stock. */
     boolean needsStock() {
         return lines.stream().anyMatch(l -> l.getStatus() != LineStatus.CANCELLED && l.remaining() > 0);
@@ -117,6 +135,8 @@ public class OutboundOrder {
     public void setRequestedShipDate(LocalDate requestedShipDate) { this.requestedShipDate = requestedShipDate; }
     public int getPriority() { return priority; }
     public void setPriority(int priority) { this.priority = priority; }
+    public ShipTo getShipTo() { return shipTo; }
+    void setShipTo(ShipTo shipTo) { this.shipTo = shipTo; }
     public OrderStatus getStatus() { return status; }
     void setStatus(OrderStatus status) { this.status = status; }
     public List<OrderLine> getLines() { return lines; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layers, Plus } from 'lucide-react';
 import {
@@ -17,6 +17,7 @@ import { errorMessage, type Page } from '../../api/http';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
+import { Can, useCan } from '../../session/SessionContext';
 import { NewOrderForm } from './NewOrderForm';
 
 const COLUMNS: Column<OrderSortField>[] = [
@@ -41,6 +42,7 @@ type LoadState =
 
 export function OrdersPage() {
   const navigate = useNavigate();
+  const may = useCan('ORDERS');
   const [params, setParams] = useSearchParams();
   const query = readQuery(params);
 
@@ -52,7 +54,7 @@ export function OrdersPage() {
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [batching, setBatching] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
-  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+  const [batchNotice, setBatchNotice] = useState<ReactNode>(null);
 
   const toggle = (o: OrderSummary) =>
     setSelected((current) => {
@@ -68,7 +70,24 @@ export function OrdersPage() {
     try {
       const result = await batchAllocate([...selected.keys()]);
       setSelected(new Map());
-      if (result.task) {
+      if (result.tasks.length > 1) {
+        setBatchNotice(
+          <>
+            Created {result.tasks.length} pick tasks, one for each pick zone:{' '}
+            {result.tasks.map((t, i) => (
+              <span key={t.id}>
+                {i > 0 && ', '}
+                <Link className="code" to={`/picking/tasks/${t.id}`}>
+                  {t.taskNumber}
+                </Link>{' '}
+                ({t.pickZone ?? 'no zone'})
+              </span>
+            ))}
+            .
+          </>,
+        );
+        setReloadKey((k) => k + 1);
+      } else if (result.task) {
         navigate(`/picking/tasks/${result.task.id}`);
       } else {
         setBatchNotice('No stock could be reserved for these orders, so no pick task was created.');
@@ -133,10 +152,12 @@ export function OrdersPage() {
           <h1>Orders</h1>
           <p className="muted">Customer orders. Each is allocated when it arrives and gets a pick task. Select orders that still need stock to allocate them together on one batch pick task.</p>
         </div>
-        <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
-          <Plus size={16} aria-hidden="true" />
-          New order
-        </button>
+        <Can permission="ORDERS">
+          <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
+            <Plus size={16} aria-hidden="true" />
+            New order
+          </button>
+        </Can>
       </header>
 
       <div className="toolbar">
@@ -216,7 +237,7 @@ export function OrdersPage() {
               {page.content.map((o) => (
                 <tr key={o.id} className="table__row--link" onClick={() => navigate(`/outbound/orders/${o.id}`)}>
                   <td className="table__select" onClick={(e) => e.stopPropagation()}>
-                    {canAllocate(o) && (
+                    {may && canAllocate(o) && (
                       <input
                         type="checkbox"
                         aria-label={`Select ${o.orderNumber} for batch`}
@@ -253,9 +274,11 @@ export function OrdersPage() {
               ) : (
                 <>
                   <p>No orders yet.</p>
-                  <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
-                    Create the first order
-                  </button>
+                  <Can permission="ORDERS">
+                    <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
+                      Create the first order
+                    </button>
+                  </Can>
                 </>
               )}
             </div>
@@ -278,15 +301,15 @@ export function OrdersPage() {
 }
 
 /** "27 / 30 EA" with a small bar showing how much of the order has stock reserved. */
-export function AllocationBar({ allocated, ordered }: { allocated: number; ordered: number }) {
+export function AllocationBar({ allocated, ordered, word = 'allocated' }: { allocated: number; ordered: number; word?: string }) {
   const pct = ordered === 0 ? 0 : Math.round((allocated / ordered) * 100);
   return (
-    <span className="alloc" title={`${pct}% allocated`}>
+    <span className="alloc" title={`${pct}% ${word}`}>
       <span className="alloc__text">
         {allocated.toLocaleString()} / {ordered.toLocaleString()} EA
       </span>
       <span className="alloc__bar" role="presentation">
-        <span className={`alloc__fill${pct === 100 ? ' alloc__fill--full' : ''}`} style={{ width: `${pct}%` }} />
+        <span className={`alloc__fill${pct >= 100 ? ' alloc__fill--full' : ''}`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </span>
     </span>
   );

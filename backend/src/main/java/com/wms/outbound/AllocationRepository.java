@@ -24,6 +24,9 @@ public interface AllocationRepository extends JpaRepository<Allocation, UUID>, J
 
     List<Allocation> findByLine_Order_Id(UUID orderId);
 
+    @EntityGraph(attributePaths = {"line", "line.order"})
+    List<Allocation> findByInventory_IdInOrderByCreatedAtDesc(Collection<UUID> inventoryIds);
+
     /** Quantity already reserved from each of these inventory records: rows of (inventory id, quantity). */
     @Query("select a.inventory.id, sum(a.quantity) from Allocation a where a.inventory.id in :inventoryIds group by a.inventory.id")
     List<Object[]> sumByInventory(Collection<UUID> inventoryIds);

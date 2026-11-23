@@ -19,13 +19,20 @@ import jakarta.validation.constraints.Size;
  *
  * @param orderNumber optional; one is generated (SO001001...) when left out
  * @param priority    1 (most urgent) to 9; defaults to 5
+ * @param shipTo      optional here; needed before it can ship
  */
 public record OrderRequest(
         @Size(max = 40) @Pattern(regexp = Codes.PATTERN, message = Codes.MESSAGE) String orderNumber,
         @NotBlank @Size(max = 120) String customerName,
         LocalDate requestedShipDate,
         @Min(1) @Max(9) Integer priority,
-        @NotEmpty(message = "add at least one line") @Size(max = 200) List<@Valid Line> lines) {
+        @NotEmpty(message = "add at least one line") @Size(max = 200) List<@Valid Line> lines,
+        @Valid ShipTo shipTo) {
+
+    /** An order whose ship-to address isn't known yet. */
+    public OrderRequest(String orderNumber, String customerName, LocalDate requestedShipDate, Integer priority, List<Line> lines) {
+        this(orderNumber, customerName, requestedShipDate, priority, lines, null);
+    }
 
     /**
      * @param itemId       the item's code, e.g. SKU-10001

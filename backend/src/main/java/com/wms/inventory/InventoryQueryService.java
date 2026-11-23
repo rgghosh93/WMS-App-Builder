@@ -185,7 +185,7 @@ public class InventoryQueryService {
         List<UUID> ids = new ArrayList<>();
         collectRecordIds(root, ids);
         Map<UUID, Integer> result = new HashMap<>();
-        allocationLookups.forEach(lookup -> result.putAll(lookup.allocatedByInventory(ids)));
+        allocationLookups.forEach(lookup -> lookup.allocatedByInventory(ids).forEach((id, n) -> result.merge(id, n, Integer::sum)));
         return result;
     }
 

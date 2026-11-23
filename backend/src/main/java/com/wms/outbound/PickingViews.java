@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.wms.masterdata.container.ContainerType;
+import com.wms.masterdata.item.ItemScan;
 import com.wms.outbound.OutboundViews.ItemRef;
 
 /** What a mobile device shows a picker. */
@@ -34,17 +35,17 @@ public final class PickingViews {
                                NewContainer newContainer) {
     }
 
+    /** @param waiting tasks nobody has started there */
+    public record PickZone(UUID id, String code, String name, long waiting) {
+    }
+
     /** @param closedDetails details picked or closed short, out of {@code detailCount} not cancelled */
-    public record TaskProgress(UUID id, String taskNumber, PickMethod pickMethod, int orderCount, String toLpnId,
+    public record TaskProgress(UUID id, String taskNumber, PickMethod pickMethod, String pickZone, int orderCount, String toLpnId,
                                String toContainerType, int closedDetails, int detailCount, boolean canRelease) {
     }
 
     /** A quantity in one unit, e.g. 4 CS of 6 EA each. */
     public record UomQuantity(String uom, int quantity, int eachesPerUnit) {
-    }
-
-    /** Something printed on the item that identifies it, and the unit it stands for. */
-    public record ItemScan(String value, String uom, int eachesPerUnit) {
     }
 
     /**
@@ -62,7 +63,7 @@ public final class PickingViews {
                                 List<ItemScan> itemScans) {
     }
 
-    /** @param suggestedLocationId the pack station with the fewest containers; null if there are no pack stations */
+    /** @param suggestedLocationId the pack station with the fewest containers waiting; null if there are no pack stations */
     public record DropDirective(String suggestedLocationId) {
     }
 

@@ -1,11 +1,14 @@
 import { request } from './http';
 import type { ItemRef, PickMethod } from './orders';
+import type { Permission } from './session';
 
 /** The person signed in on this device. */
 export interface DeviceUser {
   id: string;
   userCode: string;
   displayName: string;
+  /** What they may do on devices. */
+  permissions?: Permission[];
 }
 
 export function currentUser(signal?: AbortSignal): Promise<DeviceUser> {
@@ -26,6 +29,8 @@ export interface TaskProgress {
   id: string;
   taskNumber: string;
   pickMethod: PickMethod;
+  /** Code of its pick zone. */
+  pickZone: string | null;
   orderCount: number;
   toLpnId: string;
   toContainerType: string;
@@ -105,8 +110,21 @@ function post<T>(path: string, body: unknown): Promise<T> {
   return request(`/api/rf/picking/${path}`, { method: 'POST', body: JSON.stringify(body) });
 }
 
-export function startPicking(lpnId: string, containerTypeId: string | null = null): Promise<PickingState> {
-  return post('start', { lpnId, containerTypeId });
+/** With takeOver, carries on with the task someone else is picking into the container. With zoneId, only tasks of that pick zone; with taskId, that task. */
+export function startPicking(lpnId: string, containerTypeId: string | null = null, takeOver = false, zoneId?: string, taskId?: string): Promise<PickingState> {
+  return post('start', { lpnId, containerTypeId, takeOver, zoneId, taskId });
+}
+
+export interface PickZone {
+  id: string;
+  code: string;
+  name: string;
+  /** Tasks nobody has started there. */
+  waiting: number;
+}
+
+export function listPickZones(signal?: AbortSignal): Promise<PickZone[]> {
+  return request('/api/rf/picking/zones', { signal });
 }
 
 export function confirmPick(pick: PickConfirmation): Promise<PickingState> {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type HTMLAttributes } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type HTMLAttributes } from 'react';
 import { CornerDownLeft } from 'lucide-react';
 
 interface ScanInputProps {
@@ -17,6 +17,7 @@ interface ScanInputProps {
 export function ScanInput({ label, onScan, busy = false, error, inputMode }: ScanInputProps) {
   const [value, setValue] = useState('');
   const ref = useRef<HTMLInputElement>(null);
+  const id = useId();
 
   useEffect(() => {
     if (!busy) ref.current?.focus();
@@ -38,12 +39,12 @@ export function ScanInput({ label, onScan, busy = false, error, inputMode }: Sca
 
   return (
     <form className="scan" onSubmit={submit}>
-      <label className="scan__label" htmlFor="rf-scan">
+      <label className="scan__label" htmlFor={id}>
         {label}
       </label>
       <div className="scan__row">
         <input
-          id="rf-scan"
+          id={id}
           ref={ref}
           className="scan__input"
           value={value}

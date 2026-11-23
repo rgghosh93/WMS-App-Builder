@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -39,17 +41,20 @@ public class UomController {
     }
 
     @PostMapping
+    @Requires(Permission.MASTER_DATA)
     public ResponseEntity<UomResponse> create(@Valid @RequestBody UomRequest request) {
         UomResponse created = UomResponse.from(service.create(request));
         return ResponseEntity.created(URI.create("/api/uoms/" + created.id())).body(created);
     }
 
     @PutMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     public UomResponse update(@PathVariable UUID id, @Valid @RequestBody UomRequest request) {
         return UomResponse.from(service.update(id, request));
     }
 
     @DeleteMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

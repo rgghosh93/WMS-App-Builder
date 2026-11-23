@@ -11,7 +11,10 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+
+import jakarta.persistence.LockModeType;
 
 public interface ContainerRepository extends JpaRepository<Container, UUID>, JpaSpecificationExecutor<Container> {
 
@@ -34,6 +37,11 @@ public interface ContainerRepository extends JpaRepository<Container, UUID>, Jpa
     long countByParent_Id(UUID parentId);
 
     Optional<Container> findByLpnId(String lpnId);
+
+    /** Loads and locks a container, so people handling it at once take turns. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Container c where c.lpnId = :lpnId")
+    Optional<Container> findLockedByLpnId(String lpnId);
 
     @Query("select c.lpnId from Container c where c.lpnId in :lpnIds order by c.lpnId")
     List<String> findExistingLpnIds(Collection<String> lpnIds);

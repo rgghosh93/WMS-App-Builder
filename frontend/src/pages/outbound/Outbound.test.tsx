@@ -83,6 +83,7 @@ function task(n: number, extra: Partial<PickTaskView> = {}): PickTaskView {
     id: `t${n}`,
     taskNumber: `PT00000${n}`,
     pickMethod: 'DISCRETE',
+    pickZone: null,
     orders: [...new Map(details.map((d) => [d.order.id, d.order])).values()],
     status: 'OPEN',
     detailCount: details.length,
@@ -116,6 +117,9 @@ const DETAIL: OrderDetail = {
       orderedQuantity: 30,
       allocatedQuantity: 27,
       pickedQuantity: 0,
+      packedQuantity: 0,
+      shippedQuantity: 0,
+      closedQuantity: 0,
       requestedLot: null,
       status: 'PARTIALLY_ALLOCATED',
     },
@@ -126,6 +130,9 @@ const DETAIL: OrderDetail = {
       orderedQuantity: 50,
       allocatedQuantity: 50,
       pickedQuantity: 0,
+      packedQuantity: 0,
+      shippedQuantity: 0,
+      closedQuantity: 0,
       requestedLot: null,
       status: 'ALLOCATED',
     },
@@ -162,6 +169,9 @@ const DETAIL: OrderDetail = {
       createdAt: '2026-11-20T15:00:01Z',
     },
   ],
+  packTasks: [],
+  shipments: [],
+  shipTo: null,
   tasks: [task(1), task(2, { status: 'CANCELLED', details: [detail(1, { status: 'CANCELLED', allocationId: null })] })],
   events: [
     { occurredAt: '2026-11-20T15:00:00Z', type: 'RECEIVED', message: 'Order received from Bluebird Grocers: 2 lines, 80 EA' },
@@ -178,14 +188,18 @@ const ITEMS: Partial<Item>[] = [
   { id: 'i3', itemId: 'SKU-10004', description: 'Work gloves', status: 'ACTIVE', lotControlled: false },
 ];
 
+let partShipped: OrderDetail;
 let calls: { method: string; url: URL; body?: Record<string, unknown> }[];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
+let batchTasks: PickTaskView[];
+
 beforeEach(() => {
   calls = [];
+  batchTasks = [batchTask()];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string, init: RequestInit = {}) => {
@@ -211,12 +225,20 @@ beforeEach(() => {
       if (url.pathname === '/api/orders/o2/cancel') {
         return json({ ...DETAIL, status: 'CANCELLED', allocations: [], tasks: DETAIL.tasks.map((t) => ({ ...t, status: 'CANCELLED' })) });
       }
+      if (url.pathname === '/api/orders/o6') return json(partShipped);
+      if (url.pathname === '/api/orders/o2/close-short') {
+        const lines = partShipped.lines.map((l) => ({ ...l, closedQuantity: l.orderedQuantity - l.pickedQuantity, status: 'SHIPPED' }));
+        return json({ ...partShipped, status: 'SHIPPED', lines });
+      }
+      if (url.pathname === '/api/zones') {
+        return json([{ id: 'z1', function: 'PICKING', code: 'EAST', name: 'East', status: 'ACTIVE', priority: null, allocatable: true, locationCount: 4, version: 0 }]);
+      }
       if (url.pathname === '/api/pick-tasks') {
-        return json({ content: [batchTask(), task(1), task(2, { details: [detail(1, { serialNumber: 'DR18-000101' })] })], page: 0, size: 25, totalElements: 3, totalPages: 1 });
+        return json({ content: [batchTask(), task(1, { pickZone: 'EAST' }), task(2, { details: [detail(1, { serialNumber: 'DR18-000101' })] })], page: 0, size: 25, totalElements: 3, totalPages: 1 });
       }
       if (url.pathname === '/api/pick-tasks/t1') return json(task(1));
       if (url.pathname === '/api/pick-tasks/t3') return json(batchTask());
-      if (url.pathname === '/api/orders/batch-allocate') return json({ task: batchTask(), orders: [O2, O4] });
+      if (url.pathname === '/api/orders/batch-allocate') return json({ task: batchTask(), tasks: batchTasks, orders: [O2, O4] });
       if (url.pathname === '/api/orders/o5') return json({ ...DETAIL, tasks: [batchTask()] });
       return json({ detail: 'Not found' }, 404);
     }),
@@ -314,6 +336,17 @@ describe('Orders list', () => {
     expect(calls.find((c) => c.url.pathname === '/api/orders/batch-allocate')!.body).toEqual({ orderIds: ['o2', 'o4'] });
   });
 
+  it('says which tasks were made when there are several pick zones', async () => {
+    batchTasks = [task(7, { pickZone: 'EAST' }), task(8)];
+    const user = userEvent.setup();
+    renderAt('/outbound/orders');
+    await user.click(await screen.findByRole('checkbox', { name: 'Select SO001002 for batch' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select SO001004 for batch' }));
+    await user.click(screen.getByRole('button', { name: /^Batch/ }));
+    expect(await screen.findByText(/Created 2 pick tasks/)).toHaveTextContent('Created 2 pick tasks, one for each pick zone: PT000007 (EAST), PT000008 (no zone).');
+    expect(screen.getByRole('link', { name: 'PT000007' })).toHaveAttribute('href', '/picking/tasks/t7');
+  });
+
   it('can hold a new order back to batch it later', async () => {
     const user = userEvent.setup();
     renderAt('/outbound/orders');
@@ -393,6 +426,24 @@ describe('Order detail', () => {
     expect(screen.queryByRole('button', { name: 'Allocate again' })).not.toBeInTheDocument();
   });
 
+  it('closes a part-shipped order short after confirming', async () => {
+    const user = userEvent.setup();
+    const shipped = DETAIL.lines.map((l) => ({ ...l, pickedQuantity: l.allocatedQuantity, packedQuantity: l.allocatedQuantity, shippedQuantity: l.allocatedQuantity }));
+    partShipped = { ...DETAIL, status: 'PARTIALLY_SHIPPED', lines: shipped };
+    renderAt('/outbound/orders/o6');
+    await user.click(await screen.findByRole('button', { name: 'Close short' }));
+    expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument();
+    const confirm = screen.getByRole('group', { name: 'Confirm close short' });
+    expect(confirm).toHaveTextContent('Give up on the 3 EA of SO001002 that are not picked?');
+    expect(calls.some((c) => c.url.pathname.endsWith('/close-short'))).toBe(false);
+    await user.click(within(confirm).getByRole('button', { name: 'Close short' }));
+    expect(await screen.findByText('Closed short: order is now shipped')).toBeInTheDocument();
+    expect(screen.getByText('3 EA closed short')).toBeInTheDocument();
+    expect(screen.getByText('3 EA closed short: they will not be shipped')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close short' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Allocate again' })).not.toBeInTheDocument();
+  });
+
   it('cancels after confirming', async () => {
     const user = userEvent.setup();
     renderAt('/outbound/orders/o2');
@@ -417,14 +468,22 @@ describe('Pick tasks', () => {
     expect(within(table).getByRole('link', { name: 'PT000001' })).toHaveAttribute('href', '/picking/tasks/t1');
     expect(within(first).getByRole('link', { name: 'SO001002' })).toHaveAttribute('href', '/outbound/orders/o2');
     expect(within(first).getByText('27 EA')).toBeInTheDocument();
+    await within(table).findByRole('columnheader', { name: 'Pick zone' });
     const cells = within(first).getAllByRole('cell').map((c) => c.textContent);
-    expect(cells.slice(2, 5)).toEqual(['2', '1', '2']);
+    expect(cells.slice(1, 6)).toEqual(['EAST', 'SO001002Bluebird Grocers', '2', '1', '2']);
     expect(within(first).getByText('Discrete')).toBeInTheDocument();
 
     const batch = within(table).getByRole('link', { name: 'PT000003' }).closest('tr')!;
     expect(within(batch).getByText('Batch')).toBeInTheDocument();
     expect(within(batch).getByRole('link', { name: 'SO001004' })).toHaveAttribute('href', '/outbound/orders/o4');
     expect(within(batch).getByText('2 orders')).toBeInTheDocument();
+  });
+
+  it('filters by pick zone', async () => {
+    const user = userEvent.setup();
+    renderAt('/picking/tasks');
+    await user.selectOptions(await screen.findByLabelText('Pick zone'), 'EAST');
+    await waitFor(() => expect(calls.some((c) => c.url.searchParams.get('pickZone') === 'EAST')).toBe(true));
   });
 
   it('filters by pick method', async () => {

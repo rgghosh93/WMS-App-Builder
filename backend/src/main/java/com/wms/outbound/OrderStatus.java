@@ -1,6 +1,6 @@
 package com.wms.outbound;
 
-/** Where an order is. Set from its lines after every allocation, pick or cancellation. */
+/** Where an order is. Set from its lines after every allocation, pick, packed carton, shipment or cancellation. */
 public enum OrderStatus {
     /** Received; allocation has not run yet. */
     NEW,
@@ -12,6 +12,14 @@ public enum OrderStatus {
     PICKING,
     /** Everything ordered is picked. */
     PICKED,
+    /** Packing has started; some of the order is sealed in cartons. */
+    PACKING,
+    /** Everything ordered is packed and ready to ship. */
+    PACKED,
+    /** Some of it has shipped. */
+    PARTIALLY_SHIPPED,
+    /** Everything ordered has shipped. */
+    SHIPPED,
     /** Allocation ran but found no stock for any line. */
     BACKORDERED,
     /** Cancelled; its allocations were released and its tasks cancelled. */

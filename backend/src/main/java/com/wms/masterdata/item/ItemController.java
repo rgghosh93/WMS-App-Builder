@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.users.Permission;
+import com.wms.users.Requires;
 
 import jakarta.validation.Valid;
 
@@ -65,17 +67,20 @@ public class ItemController {
     }
 
     @PostMapping
+    @Requires(Permission.MASTER_DATA)
     public ResponseEntity<ItemResponse> create(@Valid @RequestBody ItemRequest request) {
         ItemResponse created = service.create(request);
         return ResponseEntity.created(URI.create("/api/items/" + created.id())).body(created);
     }
 
     @PutMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     public ItemResponse update(@PathVariable UUID id, @Valid @RequestBody ItemRequest request) {
         return service.update(id, request);
     }
 
     @DeleteMapping("/{id}")
+    @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
         service.delete(id);

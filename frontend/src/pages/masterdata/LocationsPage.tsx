@@ -16,6 +16,7 @@ import { errorMessage, type Page } from '../../api/http';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
 import { SearchBox } from '../../components/SearchBox';
+import { Can } from '../../session/SessionContext';
 import { LocationForm } from './LocationForm';
 
 const COLUMNS: Column<SortField>[] = [
@@ -137,10 +138,12 @@ export function LocationsPage() {
           <h1>Locations</h1>
           <p className="muted">Places where inventory is stored or worked on, with their identifiers and dimensions.</p>
         </div>
-        <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-          <Plus size={16} aria-hidden="true" />
-          New location
-        </button>
+        <Can permission="MASTER_DATA">
+          <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+            <Plus size={16} aria-hidden="true" />
+            New location
+          </button>
+        </Can>
       </header>
 
       {notice && (
@@ -228,9 +231,11 @@ export function LocationsPage() {
               ) : (
                 <>
                   <p>No locations yet.</p>
-                  <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-                    Create the first location
-                  </button>
+                  <Can permission="MASTER_DATA">
+                    <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+                      Create the first location
+                    </button>
+                  </Can>
                 </>
               )}
             </div>

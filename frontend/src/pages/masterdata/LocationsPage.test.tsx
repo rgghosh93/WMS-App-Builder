@@ -60,6 +60,7 @@ beforeEach(() => {
       const custom = override?.(url, init);
       if (custom) return custom;
       if (url.pathname === '/api/locations/types') return json(TYPES);
+      if (url.pathname.endsWith('/zones')) return json([{ function: 'PICKING', label: 'Picking', zoneId: 'z1', code: 'EAST', name: 'East side', status: 'ACTIVE' }]);
       if (url.pathname === '/api/locations' && method === 'GET') return json(page([LOC]));
       if (url.pathname === '/api/locations' && method === 'POST') return json({ ...LOC, ...JSON.parse(String(init.body)), id: 'new' }, 201);
       if (method === 'PUT') return json({ ...LOC, ...JSON.parse(String(init.body)), version: 4 });
@@ -317,5 +318,12 @@ describe('Locations page', () => {
     await waitFor(() =>
       expect(calls.some((c) => c.url.searchParams.get('sort') === 'zone' && c.url.searchParams.get('dir') === 'asc')).toBe(true),
     );
+  });
+
+  it('shows the zones a location is in', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'DC1-RS-01-01-A-01' }));
+    expect(await screen.findByRole('link', { name: 'EAST' })).toHaveAttribute('href', '/master-data/zones/z1');
   });
 });

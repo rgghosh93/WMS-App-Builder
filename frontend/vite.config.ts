@@ -7,7 +7,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
+      // Says who is really asking, so what is only allowed from this computer can't be reached through the proxy.
+      '/api': { target: 'http://localhost:8080', xfwd: true },
     },
   },
   test: {

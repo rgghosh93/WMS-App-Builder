@@ -211,7 +211,7 @@ export function LinesTable({ lines, baseCode, label }: { lines: InventoryLine[];
                 {showAllocated && (
                   <td className="num">
                     {line.allocatedQuantity > 0 ? (
-                      <span className="allocated" title="Reserved for orders">
+                      <span className="allocated" title="Reserved">
                         {line.allocatedQuantity.toLocaleString()} {baseCode}
                       </span>
                     ) : (

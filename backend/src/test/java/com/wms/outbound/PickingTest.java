@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,9 +53,8 @@ import com.wms.masterdata.location.LocationType;
 import com.wms.masterdata.uom.UnitOfMeasure;
 import com.wms.masterdata.uom.UnitOfMeasureRepository;
 import com.wms.masterdata.uom.UomKind;
-import com.wms.users.AppUser;
 import com.wms.users.AppUserRepository;
-import com.wms.users.PinHasher;
+import com.wms.users.TestUsers;
 
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -79,7 +79,7 @@ class PickingTest {
     @Autowired private ContainerRepository containers;
     @Autowired private ContainerTypeRepository types;
     @Autowired private AppUserRepository users;
-    @Autowired private PinHasher hasher;
+    @Autowired private TestUsers people;
     @Autowired private OrderService orderService;
 
     private Location shelf;
@@ -129,8 +129,8 @@ class PickingTest {
         containers.save(lpn("T2", tote, ContainerStatus.AVAILABLE, true));
         containers.save(lpn("B1", bin, ContainerStatus.AVAILABLE, true));
 
-        users.save(new AppUser(UUID.randomUUID(), "ANN", "Ann Lee", hasher.hash(PIN)));
-        users.save(new AppUser(UUID.randomUUID(), "BOB", "Bob Ray", hasher.hash(PIN)));
+        people.operator("ANN", "Ann Lee", PIN);
+        people.operator("BOB", "Bob Ray", PIN);
         ann = signIn("ann");
         bob = signIn("BOB");
     }
@@ -191,7 +191,7 @@ class PickingTest {
                 .andExpect(jsonPath("$.pick.orderNumber").value("SO-HIGH"))
                 .andExpect(jsonPath("$.pick.locationId").value("DC1-BK-01-01-A-01"));
         // The next picker gets the other one; the same tote or a second task is refused.
-        start(bob, "T1").andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.lpnId").value("T1 is already in use"));
+        start(bob, "T1").andExpect(status().isConflict()).andExpect(jsonPath("$.errors.assignedTo").value("Ann Lee"));
         start(bob, "T2").andExpect(jsonPath("$.pick.orderNumber").value("SO-LOW"));
         start(ann, "T2").andExpect(status().isConflict());
         assertThat(container("T1").getStatus()).isEqualTo(ContainerStatus.IN_USE);
@@ -373,6 +373,39 @@ class PickingTest {
         order("SO-1", 5, line("SKU-BAR", 1));
         JsonNode state = body(start(ann, "T1"));
         confirm(bob, state, "111000", 1, false).andExpect(status().isConflict());
+    }
+
+    @Test
+    void anotherPickerCanTakeOverAHalfPickedTask() throws Exception {
+        order("SO-1", 5, line("SKU-BAR", 12));
+        JsonNode state = body(start(ann, "T1"));
+        confirm(ann, state, "111006", 1, false);
+        call(json(post("/api/rf/picking/start"), Map.of("lpnId", "t1", "takeOver", true)), bob)
+                .andExpect(jsonPath("$.step").value("PICK"))
+                .andExpect(jsonPath("$.task.toLpnId").value("T1"))
+                .andExpect(jsonPath("$.pick.remaining").value(6));
+        // It is Bob's now, and only Bob's.
+        call(get("/api/rf/picking"), ann).andExpect(jsonPath("$.step").value("SCAN_CONTAINER"));
+        JsonNode now = body(call(get("/api/rf/picking"), bob));
+        confirm(ann, now, "111006", 1, false).andExpect(status().isConflict());
+        confirm(bob, now, "111006", 1, false).andExpect(jsonPath("$.step").value("DROP"));
+        // Even a task that only needs dropping can be taken over, but not while picking another.
+        order("SO-2", 5, line("SKU-BAR", 1));
+        start(ann, "T2");
+        call(json(post("/api/rf/picking/start"), Map.of("lpnId", "T1", "takeOver", true)), ann)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.detail", containsString("already picking")));
+        drop(bob, "DC1-PACK-01").andExpect(status().isOk());
+        start(bob, "T1").andExpect(jsonPath("$.errors.lpnId").value("T1 is already in use"));
+    }
+
+    @Test
+    void stockThatExpiresAfterAllocationCantBePicked() throws Exception {
+        order("SO-1", 5, line("SKU-BAR", 1));
+        JsonNode state = body(start(ann, "T1"));
+        inventory.findByLocation_IdIn(List.of(shelf.getId())).getFirst().setExpiryDate(LocalDate.now().minusDays(1));
+        confirm(ann, state, "111000", 1, false).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail", containsString("has expired")));
+        confirm(ann, state, null, 0, true).andExpect(jsonPath("$.step").value("SCAN_CONTAINER"));
     }
 
     @Test

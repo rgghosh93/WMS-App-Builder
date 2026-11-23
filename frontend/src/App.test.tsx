@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { NavigationProvider } from './navigation/NavigationContext';
+import type { SessionView } from './api/session';
 import type { ModuleDefinition } from './api/navigation';
 
 const MODULES: ModuleDefinition[] = [
@@ -28,21 +28,33 @@ const MODULES: ModuleDefinition[] = [
   },
 ];
 
-function renderApp() {
-  return render(
+const SIGNED_IN: SessionView = {
+  state: 'SIGNED_IN',
+  user: { id: 'u1', userCode: 'BOSS', displayName: 'The Boss', permissions: ['DESKTOP'], mustChangePassword: false },
+  setupHere: false,
+};
+
+/** Someone is signed in, and everything else gets this answer. */
+function answer(body: string, status = 200) {
+  return vi.fn(async (path: string) =>
+    path === '/api/session' ? new Response(JSON.stringify(SIGNED_IN), { status: 200 }) : new Response(body, { status }),
+  );
+}
+
+async function renderApp() {
+  render(
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <NavigationProvider>
-        <App />
-      </NavigationProvider>
+      <App />
     </MemoryRouter>,
   );
+  await screen.findByRole('navigation', { name: 'Page directory' });
 }
 
 describe('Home screen', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify(MODULES), { status: 200 })),
+      answer(JSON.stringify(MODULES)),
     );
   });
 
@@ -51,7 +63,7 @@ describe('Home screen', () => {
   });
 
   it('lists every page grouped by module', async () => {
-    renderApp();
+    await renderApp();
     const main = screen.getByRole('main');
 
     const inbound = await within(main).findByRole('region', { name: 'Inbound' });
@@ -61,7 +73,7 @@ describe('Home screen', () => {
   });
 
   it('links available pages and marks planned pages as coming soon', async () => {
-    renderApp();
+    await renderApp();
     const main = screen.getByRole('main');
 
     const receiving = await within(main).findByRole('link', { name: /Receiving/ });
@@ -71,7 +83,7 @@ describe('Home screen', () => {
   });
 
   it('shows page counts', async () => {
-    renderApp();
+    await renderApp();
     const summary = await screen.findByText('Areas');
     const dl = summary.closest('dl')!;
     expect(within(dl).getByText('2', { selector: 'dd' })).toBeInTheDocument();
@@ -81,7 +93,7 @@ describe('Home screen', () => {
 
   it('filters pages by search', async () => {
     const user = userEvent.setup();
-    renderApp();
+    await renderApp();
     const main = screen.getByRole('main');
 
     await user.type(await within(main).findByRole('searchbox', { name: 'Search pages' }), 'map');
@@ -91,8 +103,8 @@ describe('Home screen', () => {
   });
 
   it('shows an error with retry when the directory cannot load', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })));
-    renderApp();
+    vi.stubGlobal('fetch', answer('', 500));
+    await renderApp();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 500');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
@@ -101,7 +113,7 @@ describe('Home screen', () => {
 
 describe('Sidebar directory', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(MODULES), { status: 200 })));
+    vi.stubGlobal('fetch', answer(JSON.stringify(MODULES)));
   });
 
   afterEach(() => {
@@ -110,7 +122,7 @@ describe('Sidebar directory', () => {
 
   it('expands a module to show its pages', async () => {
     const user = userEvent.setup();
-    renderApp();
+    await renderApp();
     const nav = screen.getByRole('navigation', { name: 'Page directory' });
 
     const inbound = await within(nav).findByRole('button', { name: 'Inbound' });
@@ -125,7 +137,7 @@ describe('Sidebar directory', () => {
   });
 
   it('has a Home link', async () => {
-    renderApp();
+    await renderApp();
     const nav = screen.getByRole('navigation', { name: 'Page directory' });
     await within(nav).findByRole('button', { name: 'Inbound' });
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');

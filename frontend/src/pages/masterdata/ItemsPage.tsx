@@ -17,6 +17,7 @@ import { errorMessage, type Page } from '../../api/http';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
+import { Can } from '../../session/SessionContext';
 import { ItemForm } from './ItemForm';
 
 const COLUMNS: Column<ItemSortField>[] = [
@@ -119,10 +120,12 @@ export function ItemsPage() {
           <h1>Items</h1>
           <p className="muted">Products the warehouse stores and ships, with barcodes, tracking and unit size.</p>
         </div>
-        <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-          <Plus size={16} aria-hidden="true" />
-          New item
-        </button>
+        <Can permission="MASTER_DATA">
+          <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+            <Plus size={16} aria-hidden="true" />
+            New item
+          </button>
+        </Can>
       </header>
 
       {notice && (
@@ -215,9 +218,11 @@ export function ItemsPage() {
               ) : (
                 <>
                   <p>No items yet.</p>
-                  <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
-                    Create the first item
-                  </button>
+                  <Can permission="MASTER_DATA">
+                    <button type="button" className="button button--primary" onClick={() => setEditing({ mode: 'new' })}>
+                      Create the first item
+                    </button>
+                  </Can>
                 </>
               )}
             </div>
