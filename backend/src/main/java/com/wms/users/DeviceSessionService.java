@@ -1,6 +1,7 @@
 package com.wms.users;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,7 +29,7 @@ public class DeviceSessionService {
     @Transactional(noRollbackFor = ApiException.class)
     public SignIn signIn(String userCode, String pin) {
         AppUser user = store.check(userCode, pin, Kind.DEVICE);
-        DeviceUser device = DeviceUser.of(user);
+        DeviceUser device = DeviceUser.of(store.place(user, null));
         if (device.permissions().isEmpty()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "You don't have access to anything on devices");
         }
@@ -39,6 +40,15 @@ public class DeviceSessionService {
     @Transactional(readOnly = true)
     public Optional<DeviceUser> find(String token) {
         return store.find(token, Kind.DEVICE).map(DeviceUser::of);
+    }
+
+    /** Goes on working in another facility, once nothing is left half done in this one. */
+    public DeviceUser go(String token, UUID facilityId) {
+        DeviceUser now = find(token).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Sign in to continue"));
+        if (now.facility().id().equals(facilityId)) {
+            return now;
+        }
+        return DeviceUser.of(store.go(token, Kind.DEVICE, facilityId));
     }
 
     public void signOut(String token) {

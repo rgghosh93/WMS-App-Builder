@@ -5,6 +5,8 @@ import type { ItemScan } from './rf';
 
 export interface ControlItem {
   id: string;
+  /** Code of whose it is. */
+  owner?: string | null;
   itemId: string;
   description: string;
   lotControlled: boolean;
@@ -52,6 +54,8 @@ export interface ItemOnHand {
   item: ControlItem;
   total: OnHand;
   lots: OnHand[];
+  /** When looking at all facilities. */
+  facilities?: { facility: string; total: OnHand }[] | null;
 }
 
 export type TransactionType =
@@ -97,6 +101,8 @@ export interface Transaction {
   occurredAt: string;
   type: TransactionType;
   itemId: string;
+  /** Code of whose it was. */
+  owner?: string | null;
   itemCode: string;
   lotNumber: string | null;
   serialNumber: string | null;
@@ -171,6 +177,8 @@ export function saveInventorySettings(approvalLimit: number): Promise<{ approval
 
 /** What to hold: one of an LPN, a location, an item, or a lot of an item. */
 export interface HoldScope {
+  /** Code of whose item it is, if several have one with this ID. */
+  owner?: string;
   lpnId?: string;
   locationId?: string;
   itemId?: string;
@@ -234,6 +242,8 @@ export function changeQuantity(input: { inventoryId: string; expectedQuantity: n
 
 export interface AddStockInput {
   itemId: string;
+  /** Code of whose item it is. */
+  owner?: string;
   locationId: string | null;
   lpnId: string | null;
   quantity: number;
@@ -300,6 +310,8 @@ export interface CountPlan {
   /** A counting zone. */
   zoneId?: string;
   itemId?: string;
+  /** Code of whose item it is, if several have one with this ID. */
+  owner?: string;
   includeEmpty?: boolean;
 }
 
@@ -333,11 +345,38 @@ export interface MovableLine {
 }
 
 export interface MoveSource {
-  /** Set for an LPN, which is moved whole. */
+  /** Set for an LPN. */
   lpn: string | null;
   containerType: string | null;
   location: string;
+  /** Whether the LPN can be moved as it is. */
+  whole: boolean;
+  /** Whether what is in the LPN can be taken out of it item by item: only at a pack station. */
+  byItem: boolean;
+  /** Why the LPN can't be moved as it is. */
+  whyStays: string | null;
   lines: MovableLine[];
+  /** LPNs at the pack station with something to put back. */
+  lpns: PutBack[];
+}
+
+/** Stock at a pack station that no order has any more. */
+export interface PutBack {
+  location: string;
+  /** The LPN it is in; null if it lies loose. */
+  lpn: string | null;
+  items: string[];
+  quantity: number;
+  /** How much of it is on hold or damaged. */
+  held: number;
+}
+
+export function listPutBack(signal?: AbortSignal): Promise<PutBack[]> {
+  return request(`${API}/put-back`, { signal });
+}
+
+export function listPutBackOnDevice(signal?: AbortSignal): Promise<PutBack[]> {
+  return request('/api/rf/moves/put-back', { signal });
 }
 
 function rf<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
@@ -378,6 +417,8 @@ export interface CountEntryInput {
   requestId: string;
   lpnId: string | null;
   itemBarcode: string;
+  /** Code of whose item it is. */
+  owner?: string | null;
   quantity: number | null;
   lotNumber: string | null;
   serialNumbers: string[];
@@ -391,8 +432,8 @@ export function startCount(locationId: string, takeOver: boolean): Promise<Count
   return rf('counts/start', { locationId, takeOver });
 }
 
-export function getCountItem(code: string): Promise<{ item: ControlItem; scan: ItemScan }> {
-  return request(`/api/rf/counts/items/${encodeURIComponent(code)}`);
+export function getCountItem(code: string, owner?: string): Promise<{ item: ControlItem; scan: ItemScan }> {
+  return request(`/api/rf/counts/items/${encodeURIComponent(code)}${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`);
 }
 
 export function enterCount(id: string, entry: CountEntryInput): Promise<CountState> {

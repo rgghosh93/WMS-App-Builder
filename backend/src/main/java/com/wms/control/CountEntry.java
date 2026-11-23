@@ -3,6 +3,7 @@ package com.wms.control;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 
@@ -17,7 +18,7 @@ import jakarta.persistence.Table;
 /** Something counted. */
 @Entity
 @Table(name = "count_entries")
-public class CountEntry {
+public class CountEntry extends FacilityRecord {
 
     @Id
     private UUID id;

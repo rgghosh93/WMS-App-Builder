@@ -33,16 +33,17 @@ public final class PackingViews {
     /**
      * Something in the container to pack.
      *
-     * @param shortQuantity eaches reported missing at packing
+     * @param shortQuantity     eaches reported missing at packing
+     * @param cancelledQuantity eaches not to be packed any more, as the order was cancelled or undone
      * @param itemScans     what can be scanned for the item, and the unit each stands for
      */
     public record PackDetailView(UUID id, int detailNumber, OrderRef order, int lineNumber, ItemRef item, String lotNumber,
-                                 String serialNumber, int quantity, int packedQuantity, int shortQuantity, int remaining,
+                                 String serialNumber, int quantity, int packedQuantity, int shortQuantity, int cancelledQuantity, int remaining,
                                  List<ItemScan> itemScans) {
         static PackDetailView of(PackTaskDetail d) {
             return new PackDetailView(d.getId(), d.getDetailNumber(), OrderRef.of(d.getOrder()), d.getLine().getLineNumber(),
                     ItemRef.of(d.getItem()), d.getLotNumber(), d.getSerialNumber(), d.getQuantity(), d.getPackedQuantity(),
-                    d.getShortQuantity(), d.remaining(), ItemScan.of(d.getItem()));
+                    d.getShortQuantity(), d.getCancelledQuantity(), d.remaining(), ItemScan.of(d.getItem()));
         }
     }
 
@@ -87,7 +88,7 @@ public final class PackingViews {
                     t.orders().stream().map(OrderRef::of).toList(),
                     t.getAssignedTo() == null ? null : t.getAssignedTo().getDisplayName(),
                     t.getAssignedTo() == null ? null : t.getAssignedTo().getId(),
-                    details.stream().mapToInt(PackDetailView::quantity).sum(),
+                    details.stream().mapToInt(d -> d.quantity() - d.cancelledQuantity()).sum(),
                     details.stream().mapToInt(PackDetailView::packedQuantity).sum(),
                     details.stream().mapToInt(PackDetailView::shortQuantity).sum(),
                     PackingService.canPackAsIs(t), details, t.getCartons().stream().map(CartonView::of).toList(),

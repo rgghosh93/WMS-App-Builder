@@ -3,7 +3,9 @@ package com.wms.control;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -25,6 +27,7 @@ import com.wms.common.api.PageResponse;
 import com.wms.control.AdjustmentService.AdjustmentView;
 import com.wms.control.ControlViews.HoldResult;
 import com.wms.control.ControlViews.ItemOnHand;
+import com.wms.control.ControlViews.PutBack;
 import com.wms.control.ControlViews.StockView;
 import com.wms.control.ControlViews.TransactionView;
 import com.wms.control.CountViews.CountDetail;
@@ -32,7 +35,10 @@ import com.wms.control.CountViews.CountSummary;
 import com.wms.control.CountViews.Planned;
 import com.wms.control.ReasonService.ReasonView;
 import com.wms.control.ReasonService.SettingsView;
+import com.wms.facility.FacilityRef;
+import com.wms.facility.Site;
 import com.wms.inventory.StockTransaction;
+import com.wms.masterdata.owner.Owners;
 import com.wms.users.DesktopUser;
 import com.wms.users.Permission;
 import com.wms.users.Requires;
@@ -47,13 +53,17 @@ public class InventoryControlController {
     private static final int MAX_PAGE_SIZE = 200;
 
     private final StockQueryService stock;
+    private final Owners owners;
     private final HoldService holds;
     private final AdjustmentService adjustments;
     private final CountService counts;
     private final ReasonService reasons;
+    private final MoveService moves;
 
     public InventoryControlController(StockQueryService stock, HoldService holds, AdjustmentService adjustments, CountService counts,
-                                      ReasonService reasons) {
+                                      ReasonService reasons, Owners owners, MoveService moves) {
+        this.moves = moves;
+        this.owners = owners;
         this.stock = stock;
         this.holds = holds;
         this.adjustments = adjustments;
@@ -65,25 +75,42 @@ public class InventoryControlController {
 
     @GetMapping("/stock")
     public PageResponse<StockView> stock(@RequestParam(required = false) String q, @RequestParam(defaultValue = "false") boolean held,
+                                         @RequestParam(required = false) String owner,
                                          @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size) {
-        return PageResponse.of(stock.stock(q, held, page(page, size)), s -> s);
+        return PageResponse.of(stock.stock(q, held, owners.filter(owner), page(page, size)), s -> s);
     }
 
+    /** Stock at pack stations that has to go back to storage. */
+    @GetMapping("/put-back")
+    public List<PutBack> putBack() {
+        return moves.putBack();
+    }
+
+    /** @param everywhere in every facility the person may work in, rather than the one they are in */
     @GetMapping("/on-hand")
-    public PageResponse<ItemOnHand> onHand(@RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page,
-                                           @RequestParam(defaultValue = "25") int size) {
-        return PageResponse.of(stock.onHand(q, page(page, size)), i -> i);
+    public PageResponse<ItemOnHand> onHand(@RequestAttribute(DesktopUser.ATTRIBUTE) DesktopUser user, @RequestParam(required = false) String q,
+                                           @RequestParam(required = false) String owner,
+                                           @RequestParam(defaultValue = "false") boolean everywhere,
+                                           @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "25") int size) {
+        PageRequest p = page(page, size);
+        UUID of = owners.filter(owner);
+        if (!everywhere) {
+            return PageResponse.of(stock.onHand(q, of, null, p), i -> i);
+        }
+        Map<UUID, String> facilities = user.facilities().stream().collect(Collectors.toMap(FacilityRef::id, FacilityRef::code));
+        return PageResponse.of(Site.everywhere(() -> stock.onHand(q, of, facilities, p)), i -> i);
     }
 
     @GetMapping("/history")
     public PageResponse<TransactionView> history(@RequestParam(required = false) String q,
+                                                 @RequestParam(required = false) String owner,
                                                  @RequestParam(required = false) StockTransaction.Type type,
                                                  @RequestParam(required = false) LocalDate from,
                                                  @RequestParam(required = false) LocalDate to,
                                                  @RequestParam(defaultValue = "0") int page,
                                                  @RequestParam(defaultValue = "25") int size) {
         PageRequest p = page(page, size);
-        return PageResponse.of(stock.history(q, type, from, to, p.getPageNumber(), p.getPageSize()), t -> t);
+        return PageResponse.of(stock.history(q, owner, type, from, to, p.getPageNumber(), p.getPageSize()), t -> t);
     }
 
     // ---------- Holds ----------

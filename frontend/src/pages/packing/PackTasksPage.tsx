@@ -13,6 +13,7 @@ import {
   type PackTaskQuery,
   type PackTaskStatus,
 } from '../../api/packing';
+import { PutBackNote } from './PutBackNote';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { formatDateTime } from '../outbound/OrdersPage';
@@ -129,6 +130,8 @@ export function PackTasksPage() {
           {page ? `${page.totalElements.toLocaleString()} task${page.totalElements === 1 ? '' : 's'}` : ''}
         </span>
       </div>
+
+      <PutBackNote />
 
       {state.status === 'error' && (
         <div className="notice" role="alert">

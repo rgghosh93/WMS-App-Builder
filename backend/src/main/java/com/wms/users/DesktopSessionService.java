@@ -59,14 +59,14 @@ public class DesktopSessionService {
         user.setPassword(hasher.hashPassword(password), false);
         user.setRoles(List.of(roles.findById(Role.ADMINISTRATOR).orElseThrow()));
         user = users.saveAndFlush(user);
-        return new SignIn(store.open(user, Kind.DESKTOP), DesktopUser.of(user));
+        return new SignIn(store.open(user, Kind.DESKTOP), DesktopUser.of(store.place(user, null)));
     }
 
     // A wrong password must still be counted, so the failure doesn't roll the transaction back.
     @Transactional(noRollbackFor = ApiException.class)
     public SignIn signIn(String userCode, String password) {
         AppUser user = store.check(userCode, password, Kind.DESKTOP);
-        DesktopUser desktop = DesktopUser.of(user);
+        DesktopUser desktop = DesktopUser.of(store.place(user, null));
         if (!desktop.permissions().contains(Permission.DESKTOP)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "You don't have access to the desktop");
         }
@@ -77,6 +77,14 @@ public class DesktopSessionService {
     @Transactional(readOnly = true)
     public Optional<DesktopUser> find(String token) {
         return store.find(token, Kind.DESKTOP).map(DesktopUser::of).filter(u -> u.permissions().contains(Permission.DESKTOP));
+    }
+
+    /** Goes on working in another facility. */
+    public DesktopUser go(String token, UUID facilityId) {
+        if (find(token).isEmpty()) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Sign in to continue");
+        }
+        return DesktopUser.of(store.go(token, Kind.DESKTOP, facilityId));
     }
 
     public void signOut(String token) {
@@ -103,6 +111,6 @@ public class DesktopSessionService {
         user.setPassword(hasher.hashPassword(next), false);
         users.flush();
         store.closeOthers(user.getId(), token);
-        return DesktopUser.of(user);
+        return DesktopUser.of(store.place(user, signedIn.facility().id()));
     }
 }

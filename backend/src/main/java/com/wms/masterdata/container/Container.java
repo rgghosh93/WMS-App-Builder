@@ -3,6 +3,7 @@ package com.wms.masterdata.container;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.location.Location;
 
 import jakarta.persistence.Column;
@@ -21,7 +22,7 @@ import jakarta.persistence.Version;
 /** A permanent container in the facility, such as a tote or an ASRS bin, identified by its LPN. */
 @Entity
 @Table(name = "containers")
-public class Container {
+public class Container extends FacilityRecord {
 
     @Id
     private UUID id;

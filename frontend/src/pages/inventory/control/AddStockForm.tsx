@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { addStock, type Adjustment } from '../../../api/control';
 import { INVENTORY_STATUSES, type InventoryStatus } from '../../../api/inventory';
 import { listItems, type Item } from '../../../api/items';
+import { useOwners } from '../../../api/owners';
 import { Drawer } from '../../../components/Drawer';
 import { Field } from '../../../components/Field';
 import { SearchPicker } from '../../../components/SearchPicker';
@@ -27,6 +28,7 @@ export function AddStockForm({ limit, onClose, onDone }: AddStockFormProps) {
   const [status, setStatus] = useState<InventoryStatus>('AVAILABLE');
   const [reasonId, setReasonId] = useState('');
   const [note, setNote] = useState('');
+  const { several } = useOwners();
   const { errors, formError, saving, submit } = useSubmit();
 
   const send = (event: FormEvent) => {
@@ -45,6 +47,7 @@ export function AddStockForm({ limit, onClose, onDone }: AddStockFormProps) {
       onDone(
         await addStock({
           itemId: item!.itemId,
+          owner: item!.owner?.code,
           locationId: inLpn ? null : place.trim(),
           lpnId: inLpn ? place.trim() : null,
           quantity: Number(amount),
@@ -92,6 +95,7 @@ export function AddStockForm({ limit, onClose, onDone }: AddStockFormProps) {
             renderOption={(i) => (
               <>
                 <span className="code">{i.itemId}</span> <span className="muted">{i.description}</span>
+                {several && i.owner && <span className="muted"> · {i.owner.code}</span>}
               </>
             )}
             invalid={Boolean(errors.itemId)}

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +28,9 @@ import com.wms.masterdata.container.NewLpnCheck;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.item.ItemRepository;
 import com.wms.masterdata.item.ItemUsage;
+import com.wms.masterdata.owner.Owner;
+import com.wms.masterdata.owner.OwnerRef;
+import com.wms.masterdata.owner.Owners;
 
 /** Takes in ASNs and shows how they are going. */
 @Service
@@ -39,15 +43,17 @@ public class AsnService implements ItemUsage {
     private final ItemRepository items;
     private final ContainerRepository containers;
     private final NewLpnCheck newLpns;
+    private final Owners owners;
 
     AsnService(AsnRepository asns, AsnReceiptRepository receipts, AsnEventRepository events, ItemRepository items,
-               ContainerRepository containers, NewLpnCheck newLpns) {
+               ContainerRepository containers, NewLpnCheck newLpns, Owners owners) {
         this.asns = asns;
         this.receipts = receipts;
         this.events = events;
         this.items = items;
         this.containers = containers;
         this.newLpns = newLpns;
+        this.owners = owners;
     }
 
     @Transactional(readOnly = true)
@@ -67,9 +73,17 @@ public class AsnService implements ItemUsage {
     }
 
     @Transactional(readOnly = true)
-    public AsnDetail getByNumber(String asnNumber) {
+    public AsnDetail getByNumber(String asnNumber, String owner) {
         String number = Codes.normalize(asnNumber);
-        Asn asn = number == null ? null : asns.findByAsnNumber(number).orElse(null);
+        String wanted = Codes.normalize(owner);
+        List<Asn> found = number == null ? List.of() : asns.findAllByAsnNumber(number).stream()
+                .filter(a -> wanted == null || a.getOwner().getCode().equals(wanted)).toList();
+        List<Asn> open = found.stream().filter(Asn::isOpen).toList();
+        if (open.size() > 1) {
+            String owners = open.stream().map(a -> a.getOwner().getCode()).sorted().collect(Collectors.joining(","));
+            throw ApiException.conflict(number + " could be an ASN of " + owners.replace(",", ", ") + ". Say whose it is.", Map.of("owner", owners));
+        }
+        Asn asn = !open.isEmpty() ? open.getFirst() : found.isEmpty() ? null : found.getFirst();
         if (asn == null) {
             throw ApiException.invalid(number == null ? "Scan an ASN" : number + " is not a known ASN",
                     Map.of("asnNumber", "not found"));
@@ -85,19 +99,21 @@ public class AsnService implements ItemUsage {
         String number = request.asnNumber() == null || request.asnNumber().isBlank()
                 ? "AS%06d".formatted(asns.nextNumber())
                 : Codes.normalize(request.asnNumber());
-        if (asns.findByAsnNumber(number).isPresent()) {
+        Owner owner = owners.forNew(request.owner());
+        if (asns.findByOwnerIdAndAsnNumber(owner.getId(), number).isPresent()) {
             throw ApiException.conflict("An ASN with this number already exists",
                     Map.of("asnNumber", "already used by another ASN"));
         }
         String reference = request.reference() == null || request.reference().isBlank() ? null : request.reference().trim();
         Asn asn = new Asn(UUID.randomUUID(), number, request.vendorName().trim(), reference, request.expectedDate());
+        asn.setOwner(owner);
 
         Map<String, String> errors = new LinkedHashMap<>();
         Set<String> lpns = new HashSet<>();
         for (int i = 0; i < request.lines().size(); i++) {
             AsnRequest.Line line = request.lines().get(i);
             String prefix = "lines[" + i + "].";
-            Item item = items.findByItemId(Codes.normalize(line.itemId())).orElse(null);
+            Item item = items.findByOwnerIdAndItemId(owner.getId(), Codes.normalize(line.itemId())).orElse(null);
             if (item == null) {
                 errors.put(prefix + "itemId", "item " + line.itemId().trim() + " not found");
                 continue;
@@ -142,6 +158,48 @@ public class AsnService implements ItemUsage {
         return detail(asn);
     }
 
+    /**
+     * Starts receiving what nobody announced.
+     *
+     * @param id         made by the device, so starting it again changes nothing
+     * @param vendorName who it is from, if known
+     */
+    public AsnDetail startBlind(UUID id, String ownerCode, String vendorName, String reference, String by) {
+        if (id == null) {
+            throw ApiException.invalid("A request ID is required", Map.of("requestId", "required"));
+        }
+        Asn known = asns.findById(id).orElse(null);
+        if (known != null) {
+            return detail(known);
+        }
+        String vendor = vendorName == null || vendorName.isBlank() ? "Vendor not known" : vendorName.trim();
+        String ref = reference == null || reference.isBlank() ? null : reference.trim();
+        if (vendor.length() > 120 || ref != null && ref.length() > 60) {
+            throw ApiException.invalid("That is too long", vendor.length() > 120 ? Map.of("vendorName", "at most 120 characters")
+                    : Map.of("reference", "at most 60 characters"));
+        }
+        Owner owner = owners.chosen(ownerCode);
+        String number;
+        do {
+            number = "BR%06d".formatted(asns.nextBlindNumber());
+        } while (asns.findByOwnerIdAndAsnNumber(owner.getId(), number).isPresent());
+        Asn asn = Asn.blind(id, number, vendor, ref);
+        asn.setOwner(owner);
+        asn = asns.save(asn);
+        events.save(new AsnEvent(asn, Type.CREATED, by + " started receiving without an ASN"));
+        asns.flush();
+        return detail(asn);
+    }
+
+    /** A blind receipt started for nothing. */
+    public AsnDetail discardBlind(UUID id) {
+        Asn asn = asns.findById(id).orElseThrow(() -> ApiException.notFound("ASN not found"));
+        if (!asn.isBlind()) {
+            throw ApiException.conflict(asn.getAsnNumber() + " was announced. Cancel it on the desktop.", Map.of());
+        }
+        return cancel(id);
+    }
+
     /** It isn't coming. Only while nothing has been received. */
     public AsnDetail cancel(UUID id) {
         Asn asn = asns.findLocked(id).orElseThrow(() -> ApiException.notFound("ASN not found"));
@@ -160,7 +218,7 @@ public class AsnService implements ItemUsage {
     }
 
     AsnDetail detail(Asn a) {
-        return new AsnDetail(a.getId(), a.getAsnNumber(), a.getVendorName(), a.getReference(), a.getExpectedDate(), a.getStatus(),
+        return new AsnDetail(a.getId(), OwnerRef.of(a.getOwner()), a.getAsnNumber(), a.getVendorName(), a.getReference(), a.getExpectedDate(), a.getStatus(), a.isBlind(),
                 a.getLines().stream().mapToLong(AsnLine::getExpectedQuantity).sum(),
                 a.getLines().stream().mapToLong(AsnLine::getReceivedQuantity).sum(),
                 a.getLines().stream().map(LineView::of).toList(),

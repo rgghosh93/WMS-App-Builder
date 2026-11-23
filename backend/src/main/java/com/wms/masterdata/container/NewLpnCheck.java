@@ -31,8 +31,7 @@ public class NewLpnCheck {
         if (locations.findByLocationId(lpnId).isPresent()) {
             return Optional.of(lpnId + " is a location, not a container");
         }
-        if (items.findByItemId(lpnId).isPresent() || items.findByBarcode(lpnId).isPresent()
-                || itemUoms.findFirstByBarcode(lpnId).isPresent()) {
+        if (items.existsByItemId(lpnId) || items.existsByBarcode(lpnId) || itemUoms.existsByBarcode(lpnId)) {
             return Optional.of(lpnId + " is an item, not a container");
         }
         return Optional.empty();

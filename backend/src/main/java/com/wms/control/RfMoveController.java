@@ -1,5 +1,7 @@
 package com.wms.control;
 
+import java.util.List;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.control.ControlViews.MoveResult;
 import com.wms.control.ControlViews.MoveSource;
+import com.wms.control.ControlViews.PutBack;
 import com.wms.users.DeviceUser;
 import com.wms.users.Permission;
 import com.wms.users.Requires;
@@ -29,6 +32,12 @@ public class RfMoveController {
     @GetMapping("/from/{code}")
     public MoveSource source(@PathVariable String code) {
         return moves.source(code);
+    }
+
+    /** Stock at pack stations that has to go back to storage. */
+    @GetMapping("/put-back")
+    public List<PutBack> putBack() {
+        return moves.putBack();
     }
 
     @PostMapping("/lpn")

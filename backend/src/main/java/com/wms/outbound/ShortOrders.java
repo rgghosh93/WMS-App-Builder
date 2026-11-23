@@ -33,12 +33,22 @@ class ShortOrders implements WaitingOrders {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<UUID> itemsWaitedFor() {
+        return orders.findItemsShortOf();
+    }
+
+    @Override
     @Transactional
-    public void tryAgain(UUID orderId, UUID itemId) {
+    public boolean tryAgain(UUID orderId, UUID itemId) {
         OutboundOrder order = orders.findLocked(orderId).orElse(null);
-        if (order != null && order.getStatus() != OrderStatus.CANCELLED && order.needsStock()) {
-            allocationService.allocateItem(order, itemId);
-            orders.flush();
+        // Nothing is tried again for an order taken back to New in the meantime: that is up to whoever did it.
+        if (order == null || order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.NEW || !order.needsStock()) {
+            return true;
         }
+        allocationService.allocateItem(order, itemId);
+        orders.flush();
+        return order.getLines().stream().noneMatch(l -> l.getItem().getId().equals(itemId) && l.getRequestedLot() == null
+                && l.getStatus() != LineStatus.CANCELLED && l.remaining() > 0);
     }
 }

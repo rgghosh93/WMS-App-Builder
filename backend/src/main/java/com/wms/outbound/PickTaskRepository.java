@@ -49,6 +49,10 @@ public interface PickTaskRepository extends JpaRepository<PickTask, UUID>, JpaSp
             + "(com.wms.outbound.PickTaskStatus.IN_PROGRESS, com.wms.outbound.PickTaskStatus.PICKED)")
     Optional<PickTask> findActiveInto(String lpnId);
 
+    @Query("select t.taskNumber from PickTask t where t.toContainer.id = :containerId and t.status in "
+            + "(com.wms.outbound.PickTaskStatus.IN_PROGRESS, com.wms.outbound.PickTaskStatus.PICKED)")
+    Optional<String> findNumberActiveInto(UUID containerId);
+
     /** Tasks waiting for a picker, most urgent order first, then earliest ship date, then oldest: rows of (id, priority of the order). */
     @Query("""
             select t.id, min(o.priority) from PickTask t join t.details d join d.order o

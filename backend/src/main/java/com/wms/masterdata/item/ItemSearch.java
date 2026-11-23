@@ -4,6 +4,7 @@ import com.wms.common.ActiveStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.springframework.data.jpa.domain.Specification;
 
@@ -14,8 +15,9 @@ import jakarta.persistence.criteria.Predicate;
  *
  * @param q      free text matched (contains, any case) against item ID, description and barcode
  * @param status exact status
+ * @param owner  exact owner (internal id)
  */
-public record ItemSearch(String q, ActiveStatus status) {
+public record ItemSearch(String q, ActiveStatus status, UUID owner) {
 
     Specification<Item> toSpecification() {
         return (root, query, cb) -> {
@@ -29,6 +31,9 @@ public record ItemSearch(String q, ActiveStatus status) {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (owner != null) {
+                predicates.add(cb.equal(root.get("ownerId"), owner));
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

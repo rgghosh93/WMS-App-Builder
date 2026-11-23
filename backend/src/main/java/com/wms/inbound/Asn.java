@@ -4,8 +4,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
+import com.wms.masterdata.item.Item;
+import com.wms.masterdata.owner.Owner;
 import com.wms.users.AppUser;
 
 import jakarta.persistence.CascadeType;
@@ -27,10 +31,18 @@ import jakarta.persistence.Version;
 /** An advance shipping notice: what a vendor says is coming. */
 @Entity
 @Table(name = "asns")
-public class Asn {
+public class Asn extends FacilityRecord {
 
     @Id
     private UUID id;
+
+    /** Whose it is. Set when it is made, and never changed. */
+    @Column(name = "owner_id", nullable = false, updatable = false)
+    private UUID ownerId = Owner.FIRST;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", insertable = false, updatable = false)
+    private Owner owner;
 
     @Column(name = "asn_number", nullable = false, length = 40)
     private String asnNumber;
@@ -48,6 +60,10 @@ public class Asn {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 12)
     private AsnStatus status;
+
+    /** Nobody announced it: it was started on the dock, and its lines are made as it is received. */
+    @Column(nullable = false, updatable = false)
+    private boolean blind;
 
     @OneToMany(mappedBy = "asn", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNumber ASC")
@@ -94,6 +110,24 @@ public class Asn {
         updatedAt = Instant.now();
     }
 
+    /** A receipt of what nobody announced. */
+    static Asn blind(UUID id, String number, String vendorName, String reference) {
+        Asn asn = new Asn(id, number, vendorName, reference, null);
+        asn.blind = true;
+        asn.status = AsnStatus.RECEIVING;
+        return asn;
+    }
+
+    /** The line for an item and lot, made when the first of it comes. Only for blind receipts. */
+    AsnLine lineFor(Item item, String lot) {
+        return lines.stream().filter(l -> l.getItem().getId().equals(item.getId()) && Objects.equals(l.getLotNumber(), lot)).findFirst()
+                .orElseGet(() -> {
+                    AsnLine line = new AsnLine(UUID.randomUUID(), this, lines.size() + 1, item, 0, lot, null, null);
+                    lines.add(line);
+                    return line;
+                });
+    }
+
     void startReceiving() {
         status = AsnStatus.RECEIVING;
     }
@@ -117,11 +151,20 @@ public class Asn {
         return lines.stream().anyMatch(l -> l.getReceivedQuantity() > 0);
     }
 
+    public Owner getOwner() { return owner; }
+    public UUID getOwnerId() { return ownerId; }
+
+    public void setOwner(Owner owner) {
+        this.owner = owner;
+        this.ownerId = owner.getId();
+    }
+
     public UUID getId() { return id; }
     public String getAsnNumber() { return asnNumber; }
     public String getVendorName() { return vendorName; }
     public String getReference() { return reference; }
     public LocalDate getExpectedDate() { return expectedDate; }
+    public boolean isBlind() { return blind; }
     public AsnStatus getStatus() { return status; }
     public List<AsnLine> getLines() { return lines; }
     public AppUser getClosedBy() { return closedBy; }

@@ -4,6 +4,8 @@ import { Plus } from 'lucide-react';
 import { ASN_STATUSES, asnStatusLabel, listAsns, type AsnQuery, type AsnSortField, type AsnStatus, type AsnSummary } from '../../api/asns';
 import { errorMessage, type Page } from '../../api/http';
 import { statusClass } from '../../api/orders';
+import { useOwners } from '../../api/owners';
+import { OwnerFilter } from '../../components/OwnerSelect';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
@@ -39,6 +41,7 @@ export function AsnsPage() {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
+  const { several } = useOwners();
 
   const updateQuery = useCallback(
     (changes: Partial<AsnQuery>) => {
@@ -70,7 +73,7 @@ export function AsnsPage() {
   }, [queryKey, reloadKey]);
 
   const page = state.status === 'ready' ? state.page : state.status === 'loading' ? state.previous : undefined;
-  const filtered = Boolean(query.q || query.status);
+  const filtered = Boolean(query.q || query.status || query.owner);
 
   return (
     <div className="page">
@@ -85,7 +88,7 @@ export function AsnsPage() {
       <header className="page__header">
         <div>
           <h1>ASNs</h1>
-          <p className="muted">Advance shipping notices: what vendors say is coming. They are received on a mobile device.</p>
+          <p className="muted">Advance shipping notices: what vendors say is coming. They are received on a mobile device, where things can be received without one too.</p>
         </div>
         <Can permission="INBOUND">
           <button type="button" className="button button--primary" onClick={() => setCreating(true)}>
@@ -110,6 +113,7 @@ export function AsnsPage() {
             ))}
           </select>
         </label>
+        <OwnerFilter value={query.owner ?? ''} onChange={(owner) => updateQuery({ owner })} />
         <span className="toolbar__count muted" aria-live="polite">
           {page ? `${page.totalElements.toLocaleString()} ASN${page.totalElements === 1 ? '' : 's'}` : ''}
         </span>
@@ -140,6 +144,9 @@ export function AsnsPage() {
                     <Link className="code" to={`/inbound/asns/${a.id}`} onClick={(e) => e.stopPropagation()}>
                       {a.asnNumber}
                     </Link>
+                    {(a.blind || (several && a.owner)) && (
+                      <span className="muted cell__sub">{[several && a.owner?.code, a.blind && 'No ASN'].filter(Boolean).join(' · ')}</span>
+                    )}
                   </th>
                   <td>{a.vendorName}</td>
                   <td className="code">{a.reference ?? <span className="muted">—</span>}</td>
@@ -148,7 +155,11 @@ export function AsnsPage() {
                   </td>
                   <td className="num">{a.lineCount}</td>
                   <td>
-                    <AllocationBar allocated={a.receivedQuantity} ordered={a.expectedQuantity} word="received" />
+                    {a.blind ? (
+                      `${a.receivedQuantity.toLocaleString()} EA`
+                    ) : (
+                      <AllocationBar allocated={a.receivedQuantity} ordered={a.expectedQuantity} word="received" />
+                    )}
                   </td>
                   <td>{a.expectedDate ? formatDay(a.expectedDate) : <span className="muted">—</span>}</td>
                   <td className="muted">{formatDateTime(a.createdAt)}</td>
@@ -180,6 +191,7 @@ function readQuery(params: URLSearchParams): AsnQuery {
   const page = Number(params.get('page'));
   return {
     q: params.get('q') ?? '',
+    owner: params.get('owner') ?? '',
     status: ASN_STATUSES.find((s) => s.value === status)?.value ?? '',
     sort: sort && SORT_FIELDS.includes(sort) ? sort : 'createdAt',
     dir: params.get('dir') === 'asc' ? 'asc' : 'desc',
@@ -191,6 +203,7 @@ function readQuery(params: URLSearchParams): AsnQuery {
 function writeQuery(q: AsnQuery): URLSearchParams {
   const params = new URLSearchParams();
   if (q.q) params.set('q', q.q);
+  if (q.owner) params.set('owner', q.owner);
   if (q.status) params.set('status', q.status);
   if (q.sort !== 'createdAt') params.set('sort', q.sort);
   if (q.dir !== 'desc') params.set('dir', q.dir);

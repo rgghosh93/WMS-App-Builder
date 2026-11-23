@@ -3,6 +3,8 @@ package com.wms.inbound;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,7 +18,7 @@ import jakarta.persistence.Table;
 /** One entry in an ASN's activity log. */
 @Entity
 @Table(name = "asn_events")
-public class AsnEvent {
+public class AsnEvent extends FacilityRecord {
 
     public enum Type { CREATED, RECEIVED, REVERSED, CLOSED, CANCELLED }
 

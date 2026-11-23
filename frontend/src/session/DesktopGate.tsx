@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { SESSION_STALE, errorMessage } from '../api/http';
-import { getSession, signOutOfDesktop, type DesktopUser, type SessionView } from '../api/session';
+import { getSession, goToFacility, signOutOfDesktop, type DesktopUser, type SessionView } from '../api/session';
 import { Drawer } from '../components/Drawer';
 import { NavigationProvider } from '../navigation/NavigationContext';
 import { PasswordForm } from './PasswordForm';
@@ -30,14 +30,35 @@ export function DesktopGate() {
 
   useEffect(() => {
     const look = () => setAttempt((n) => n + 1);
+    // Another tab may have gone to another facility meanwhile, and what is done here would happen there.
+    const back = () => document.visibilityState === 'visible' && look();
     window.addEventListener(SESSION_STALE, look);
-    return () => window.removeEventListener(SESSION_STALE, look);
+    document.addEventListener('visibilitychange', back);
+    return () => {
+      window.removeEventListener(SESSION_STALE, look);
+      document.removeEventListener('visibilitychange', back);
+    };
   }, []);
 
   const signedIn = useCallback((user: DesktopUser) => {
     setSigningIn(false);
     setState({ status: 'ready', view: { state: 'SIGNED_IN', user, setupHere: false } });
   }, []);
+
+  const navigate = useNavigate();
+  const goTo = useCallback(
+    async (facilityId: string) => {
+      try {
+        signedIn(await goToFacility(facilityId));
+        // What was looked at is in the facility left behind.
+        navigate('/');
+        return null;
+      } catch (error) {
+        return errorMessage(error);
+      }
+    },
+    [navigate, signedIn],
+  );
 
   const signOut = useCallback(async () => {
     setChanging(false);
@@ -86,9 +107,9 @@ export function DesktopGate() {
   }
 
   return (
-    <SessionContext.Provider value={{ user: view.user, signOut: () => void signOut(), changePassword: () => setChanging(true) }}>
-      {/* Who it is decides which pages there are. */}
-      <NavigationProvider key={`${view.user.id}-${view.user.permissions.join()}`}>
+    <SessionContext.Provider value={{ user: view.user, signOut: () => void signOut(), goTo, changePassword: () => setChanging(true) }}>
+      {/* Who it is decides which pages there are, and where they are what is on them. */}
+      <NavigationProvider key={`${view.user.id}-${view.user.facility?.id}-${view.user.permissions.join()}`}>
         <Outlet />
       </NavigationProvider>
       {changing && (

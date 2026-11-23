@@ -2,6 +2,7 @@ package com.wms.control;
 
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 
@@ -16,7 +17,7 @@ import jakarta.persistence.Table;
 /** What was counted against what was expected. */
 @Entity
 @Table(name = "count_results")
-public class CountResult {
+public class CountResult extends FacilityRecord {
 
     @Id
     private UUID id;

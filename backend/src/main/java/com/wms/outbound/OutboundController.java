@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
 import com.wms.inventory.InventoryStatus;
+import com.wms.masterdata.owner.Owners;
 import com.wms.outbound.OutboundViews.AllocationView;
 import com.wms.outbound.OutboundViews.OrderDetail;
 import com.wms.outbound.OutboundViews.OrderSummary;
@@ -42,8 +43,10 @@ public class OutboundController {
             "status", "status");
 
     private final OrderService orders;
+    private final Owners owners;
 
-    public OutboundController(OrderService orders) {
+    public OutboundController(OrderService orders, Owners owners) {
+        this.owners = owners;
         this.orders = orders;
     }
 
@@ -51,6 +54,7 @@ public class OutboundController {
     public PageResponse<OrderSummary> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String owner,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "createdAt") String sort,
@@ -62,7 +66,7 @@ public class OutboundController {
         Sort.Direction direction = "asc".equalsIgnoreCase(dir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Sort order = Sort.by(direction, path).and(Sort.by(Sort.Direction.DESC, "orderNumber"));
         PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE), order);
-        return PageResponse.of(orders.search(new OrderSearch(q, status), pageable), o -> o);
+        return PageResponse.of(orders.search(new OrderSearch(q, status, owners.filter(owner)), pageable), o -> o);
     }
 
     @GetMapping("/api/orders/{id}")
@@ -102,6 +106,13 @@ public class OutboundController {
     @Requires(Permission.ORDERS)
     public OrderDetail cancel(@PathVariable UUID id) {
         return orders.cancel(id);
+    }
+
+    /** Takes an order back to before it was allocated, whatever is picked or packed of it. */
+    @PostMapping("/api/orders/{id}/undo")
+    @Requires(Permission.ORDERS)
+    public OrderDetail undo(@PathVariable UUID id) {
+        return orders.undo(id);
     }
 
     /** Gives up on what isn't picked; the rest still ships. */

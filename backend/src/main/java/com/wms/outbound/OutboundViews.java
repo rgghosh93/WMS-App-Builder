@@ -10,6 +10,7 @@ import com.wms.inventory.InventoryStatus;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
+import com.wms.masterdata.owner.OwnerRef;
 
 /** Read models for orders, allocations and pick tasks. */
 public final class OutboundViews {
@@ -58,6 +59,7 @@ public final class OutboundViews {
      */
     public record OrderSummary(
             UUID id,
+            OwnerRef owner,
             String orderNumber,
             String customerName,
             LocalDate requestedShipDate,
@@ -201,6 +203,7 @@ public final class OutboundViews {
     /** An order with its lines, the stock reserved for it, its pick tasks and what has happened to it. */
     public record OrderDetail(
             UUID id,
+            OwnerRef owner,
             String orderNumber,
             String customerName,
             LocalDate requestedShipDate,

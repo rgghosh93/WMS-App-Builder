@@ -19,6 +19,7 @@ import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
 import com.wms.inbound.InboundViews.AsnDetail;
 import com.wms.inbound.InboundViews.AsnSummary;
+import com.wms.masterdata.owner.Owners;
 import com.wms.users.Permission;
 import com.wms.users.Requires;
 
@@ -37,15 +38,18 @@ public class AsnController {
             "status", "status");
 
     private final AsnService service;
+    private final Owners owners;
 
-    public AsnController(AsnService service) {
+    public AsnController(AsnService service, Owners owners) {
         this.service = service;
+        this.owners = owners;
     }
 
     @GetMapping
     public PageResponse<AsnSummary> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) AsnStatus status,
+            @RequestParam(required = false) String owner,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "createdAt") String sort,
@@ -57,7 +61,7 @@ public class AsnController {
         Sort.Direction direction = "asc".equalsIgnoreCase(dir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE),
                 Sort.by(direction, path).and(Sort.by(Sort.Direction.DESC, "asnNumber")));
-        return PageResponse.of(service.search(new AsnSearch(q, status), pageable), a -> a);
+        return PageResponse.of(service.search(new AsnSearch(q, status, owners.filter(owner)), pageable), a -> a);
     }
 
     @GetMapping("/{id}")

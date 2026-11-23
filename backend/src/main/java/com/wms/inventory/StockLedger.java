@@ -1,13 +1,18 @@
 package com.wms.inventory;
 
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import com.wms.facility.Site;
 import com.wms.inventory.StockTransaction.Type;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
+import com.wms.masterdata.owner.Owners;
 import com.wms.users.AppUser;
 import com.wms.users.AppUserRepository;
 
@@ -17,10 +22,17 @@ public class StockLedger {
 
     private static final int MAX_NESTING = 20;
 
+    /** What can leave more for orders than there was. */
+    private static final Set<Type> FREEING = EnumSet.of(Type.PUTAWAY, Type.MOVE, Type.REPLENISH, Type.RELEASE, Type.ADJUST, Type.COUNT);
+
     private final StockTransactionRepository transactions;
     private final AppUserRepository users;
+    private final Owners owners;
+    private final ApplicationEventPublisher publisher;
 
-    StockLedger(StockTransactionRepository transactions, AppUserRepository users) {
+    StockLedger(StockTransactionRepository transactions, AppUserRepository users, Owners owners, ApplicationEventPublisher publisher) {
+        this.publisher = publisher;
+        this.owners = owners;
         this.transactions = transactions;
         this.users = users;
     }
@@ -74,7 +86,11 @@ public class StockLedger {
                     InventoryStatus toStatus, Note note) {
         String name = note.userName() != null ? note.userName()
                 : note.userId() == null ? "System" : users.findById(note.userId()).map(AppUser::getDisplayName).orElse("System");
-        transactions.save(new StockTransaction(transactions.nextNumber(), type, what, quantity, from, to, fromStatus, toStatus, note, name));
+        transactions.save(new StockTransaction(transactions.nextNumber(), type, what, quantity, from, to, fromStatus, toStatus, note, name,
+                owners.get(what.getItem().getOwnerId()).getCode()));
+        if (FREEING.contains(type)) {
+            publisher.publishEvent(new StockFreed(Site.current(), what.getItem().getId()));
+        }
     }
 
     /** Where someone last handled stock, as far as is known. */

@@ -225,6 +225,12 @@ beforeEach(() => {
       if (url.pathname === '/api/orders/o2/cancel') {
         return json({ ...DETAIL, status: 'CANCELLED', allocations: [], tasks: DETAIL.tasks.map((t) => ({ ...t, status: 'CANCELLED' })) });
       }
+      if (url.pathname === '/api/orders/o7') {
+        return json({ ...DETAIL, status: 'PICKING', lines: DETAIL.lines.map((l, i) => ({ ...l, pickedQuantity: i === 0 ? 20 : 0 })) });
+      }
+      if (url.pathname.endsWith('/undo')) {
+        return json({ ...DETAIL, status: 'NEW', allocations: [], lines: DETAIL.lines.map((l) => ({ ...l, status: 'NEW', allocatedQuantity: 0, pickedQuantity: 0 })) });
+      }
       if (url.pathname === '/api/orders/o6') return json(partShipped);
       if (url.pathname === '/api/orders/o2/close-short') {
         const lines = partShipped.lines.map((l) => ({ ...l, closedQuantity: l.orderedQuantity - l.pickedQuantity, status: 'SHIPPED' }));
@@ -433,6 +439,7 @@ describe('Order detail', () => {
     renderAt('/outbound/orders/o6');
     await user.click(await screen.findByRole('button', { name: 'Close short' }));
     expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument();
     const confirm = screen.getByRole('group', { name: 'Confirm close short' });
     expect(confirm).toHaveTextContent('Give up on the 3 EA of SO001002 that are not picked?');
     expect(calls.some((c) => c.url.pathname.endsWith('/close-short'))).toBe(false);
@@ -442,6 +449,27 @@ describe('Order detail', () => {
     expect(screen.getByText('3 EA closed short: they will not be shipped')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close short' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Allocate again' })).not.toBeInTheDocument();
+  });
+
+  it('undoes picking after confirming', async () => {
+    const user = userEvent.setup();
+    renderAt('/outbound/orders/o7');
+    await user.click(await screen.findByRole('button', { name: 'Cancel order' }));
+    expect(screen.getByRole('group', { name: 'Confirm cancel' })).toHaveTextContent('The 20 EA already picked have to be moved back to storage');
+    await user.click(screen.getByRole('button', { name: 'Keep order' }));
+    await user.click(screen.getByRole('button', { name: 'Undo picking' }));
+    const confirm = screen.getByRole('group', { name: 'Confirm undo' });
+    expect(confirm).toHaveTextContent('Take SO001002 back to New?');
+    expect(confirm).toHaveTextContent('It stays New until someone allocates it.');
+    expect(calls.some((c) => c.url.pathname.endsWith('/undo'))).toBe(false);
+    await user.click(within(confirm).getByRole('button', { name: 'Undo picking' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Order SO001002 is New again');
+    expect(screen.queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument();
+  });
+
+  it('offers to undo an allocation', async () => {
+    renderAt('/outbound/orders/o2');
+    expect(await screen.findByRole('button', { name: 'Undo allocation' })).toBeInTheDocument();
   });
 
   it('cancels after confirming', async () => {

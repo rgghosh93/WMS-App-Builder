@@ -13,8 +13,8 @@ const SCANS = [
   { value: '111006', uom: 'CS', eachesPerUnit: 6 },
 ];
 const LINE = { inventoryId: 's1', item: BAR, scans: SCANS, lotNumber: 'L1', serialNumber: null, expiryDate: null, status: 'AVAILABLE' as const, quantity: 60, free: 40 };
-const PALLET: MoveSource = { lpn: 'P1', containerType: 'GMA pallet', location: 'DC1-RS-01', lines: [LINE] };
-const SHELF: MoveSource = { lpn: null, containerType: null, location: 'DC1-BK-01', lines: [LINE] };
+const PALLET: MoveSource = { lpn: 'P1', containerType: 'GMA pallet', location: 'DC1-RS-01', whole: true, byItem: false, whyStays: null, lines: [LINE], lpns: [] };
+const SHELF: MoveSource = { lpn: null, containerType: null, location: 'DC1-BK-01', whole: false, byItem: false, whyStays: null, lines: [LINE], lpns: [] };
 const NONE: CountState = { counting: null, waitingCount: 1, waiting: [{ number: 'CC000001', location: 'DC1-BK-01', again: false }], message: null };
 const COUNTING: CountState = { counting: { id: 'c1', number: 'CC000001', location: 'DC1-BK-01', entries: [] }, waitingCount: 0, waiting: [], message: null };
 const withEntry = (): CountState => ({
@@ -114,6 +114,53 @@ describe('Move', () => {
     await scan(user, 'Item', '111000');
     await user.click(await screen.findByRole('button', { name: /lot L2/ }));
     expect(await screen.findByLabelText('Quantity (EA), up to 5')).toBeInTheDocument();
+  });
+});
+
+describe('Moving off a pack station', () => {
+  const TOTE: MoveSource = { lpn: 'T1', containerType: 'Tote', location: 'DC1-PACK-01', whole: true, byItem: true, whyStays: null, lines: [{ ...LINE, quantity: 12, free: 12 }], lpns: [] };
+  const IN_TOTE = { location: 'DC1-PACK-01', lpn: 'T1', items: ['SKU-BAR'], quantity: 12, held: 0 };
+
+  it('takes things out of an LPN', async () => {
+    const user = userEvent.setup();
+    gets['/api/rf/moves/put-back'] = [IN_TOTE, { location: 'DC1-PACK-02', lpn: null, items: ['SKU-BAR'], quantity: 3, held: 3 }];
+    gets['/api/rf/moves/from/T1'] = TOTE;
+    open('/rf/move');
+    expect(await screen.findByRole('button', { name: /DC1-PACK-02/ })).toHaveTextContent('3 EAloose · SKU-BAR · 3 on hold');
+    await user.click(screen.getByRole('button', { name: /T1/ }));
+    expect(await screen.findByLabelText('To put back')).toHaveTextContent('SKU-BAR');
+    await scan(user, 'Item', '999');
+    expect(await screen.findByRole('alert')).toHaveTextContent('999 is not in T1');
+    await scan(user, 'Item', '111000');
+    await scan(user, 'Quantity (EA), up to 12', '12');
+    gets['/api/rf/moves/put-back'] = [];
+    replies['/api/rf/moves/loose'] = [{ body: { message: 'Moved 12 EA of SKU-BAR to DC1-BK-03' } }];
+    await scan(user, 'Move to location', 'DC1-BK-03');
+    expect(await screen.findByRole('status')).toHaveTextContent('Moved 12 EA');
+    expect(sent[0]).toMatchObject({ path: '/api/rf/moves/loose', body: { inventoryId: 's1', quantity: 12 } });
+    await vi.waitFor(() => expect(screen.queryByLabelText('To put back')).not.toBeInTheDocument());
+  });
+
+  it('moves an LPN as it is', async () => {
+    const user = userEvent.setup();
+    gets['/api/rf/moves/from/t1'] = TOTE;
+    open('/rf/move');
+    await scan(user, 'LPN or location', 't1');
+    await user.click(await screen.findByRole('button', { name: 'Move T1 as it is' }));
+    replies['/api/rf/moves/lpn'] = [{ body: { message: 'T1 is at DC1-BK-03' } }];
+    await scan(user, 'Move to location', 'DC1-BK-03');
+    expect(await screen.findByRole('status')).toHaveTextContent('T1 is at DC1-BK-03.');
+  });
+
+  it('says why an LPN stays, and what is at a station', async () => {
+    const user = userEvent.setup();
+    gets['/api/rf/moves/from/dc1-pack-01'] = { ...TOTE, lpn: null, containerType: null, whole: false, byItem: false, lines: [], lpns: [IN_TOTE] };
+    gets['/api/rf/moves/from/T1'] = { ...TOTE, whole: false, whyStays: 'T1 is waiting to be packed (PK000001)' };
+    open('/rf/move');
+    await scan(user, 'LPN or location', 'dc1-pack-01');
+    await user.click(await screen.findByRole('button', { name: /T1/ }));
+    expect(await screen.findByText("T1 is waiting to be packed (PK000001), so it can't be moved as it is.")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /as it is/ })).not.toBeInTheDocument();
   });
 });
 

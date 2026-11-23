@@ -386,6 +386,47 @@ class ShippingTest {
     }
 
     @Test
+    void aPackedOrderCanBeCancelledUntilItIsLoaded() throws Exception {
+        String orderId = ready("SO-1", 2, freight);
+        JsonNode manifest = open(freight);
+        load(manifest, "OLPN-1").andExpect(status().isOk());
+        for (String action : List.of("cancel", "undo")) {
+            call(post("/api/orders/" + orderId + "/" + action)).andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.detail", containsString("OLPN-1 of SO-1 is loaded on " + manifest.get("manifestNumber").asString())));
+        }
+        unload(manifest, "OLPN-1").andExpect(status().isOk());
+        call(post("/api/orders/" + orderId + "/cancel")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.shipments", hasSize(0)))
+                .andExpect(jsonPath("$.lines[0].packedQuantity").value(0));
+        call(get("/api/shipments").param("q", "SO-1")).andExpect(jsonPath("$.totalElements").value(0));
+        load(manifest, "OLPN-1").andExpect(status().isBadRequest());
+        // It goes back to storage as it is.
+        call(get("/api/rf/moves/from/OLPN-1")).andExpect(jsonPath("$.whole").value(true));
+    }
+
+    @Test
+    void anOrderInTwoCartonsIsUndoneWithBoth() throws Exception {
+        String orderId = twoCartons("SO-1");
+        tracking(only("SO-1"), 0, "TRK-1").andExpect(status().isOk());
+        call(post("/api/orders/" + orderId + "/undo")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NEW")).andExpect(jsonPath("$.shipments", hasSize(0)))
+                .andExpect(jsonPath("$.events[*].message", hasItem(containsString("To move back to storage: 1 EA in BOX-1 at " + STATION + ", 3 EA in BOX-2"))));
+    }
+
+    @Test
+    void whatHasShippedCantBeCancelled() throws Exception {
+        String orderId = ready("SO-1", 2, freight);
+        JsonNode manifest = open(freight);
+        load(manifest, "OLPN-1");
+        close(manifest, false).andExpect(status().isOk());
+        for (String action : List.of("cancel", "undo")) {
+            call(post("/api/orders/" + orderId + "/" + action)).andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.detail", containsString("has shipped")));
+        }
+    }
+
+    @Test
     void aDoorHasOneOpenManifest() throws Exception {
         open(freight);
         call(json(post("/api/rf/loading/doors/" + DOOR + "/manifest"), Map.of("carrierId", parcel.getId())))

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryStatus;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
@@ -22,7 +23,7 @@ import jakarta.persistence.Table;
 /** Something received against an ASN line, into an LPN. Reversed receipts are kept for the record. */
 @Entity
 @Table(name = "asn_receipts")
-public class AsnReceipt {
+public class AsnReceipt extends FacilityRecord {
 
     @Id
     private UUID id;

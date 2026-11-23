@@ -62,6 +62,7 @@ beforeEach(() => {
         const reply = replies[path]?.shift();
         return reply ? json(reply.body, reply.status) : method === 'DELETE' ? json(null, 204) : json({ detail: 'Not found' }, 404);
       }
+      if (path === '/api/owners') return json([]);
       urls.push(path);
       const name = path.replace('/api/inventory/', '').split('?')[0];
       if (path.startsWith('/api/zones')) return json([{ id: 'z1', function: 'COUNTING', code: 'WEEKLY', name: 'Weekly', status: 'ACTIVE', priority: null, allocatable: true, locationCount: 3, version: 0 }]);

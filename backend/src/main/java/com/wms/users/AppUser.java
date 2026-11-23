@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.hibernate.annotations.OptimisticLock;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.Facility;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,6 +52,17 @@ public class AppUser {
     @ManyToMany
     @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
+
+    /** Where they work; everywhere if empty. */
+    @ManyToMany
+    @JoinTable(name = "user_facilities", joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "facility_id"))
+    private Set<Facility> facilities = new HashSet<>();
+
+    /** Where they worked last, to start there again. */
+    @OptimisticLock(excluded = true)
+    @Column(name = "last_facility_id")
+    private UUID lastFacilityId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
@@ -138,6 +150,21 @@ public class AppUser {
     }
 
     /** Everything their roles let them do. */
+    Set<Facility> getFacilities() { return facilities; }
+
+    void setFacilities(Collection<Facility> where) {
+        facilities.clear();
+        facilities.addAll(where);
+    }
+
+    /** Whether they may work in a facility. */
+    public boolean worksIn(UUID facilityId) {
+        return facilities.isEmpty() || facilities.stream().anyMatch(f -> f.getId().equals(facilityId));
+    }
+
+    UUID getLastFacilityId() { return lastFacilityId; }
+    void setLastFacilityId(UUID id) { lastFacilityId = id; }
+
     public Set<Permission> permissions() {
         Set<Permission> all = EnumSet.noneOf(Permission.class);
         roles.forEach(r -> all.addAll(r.getPermissions()));

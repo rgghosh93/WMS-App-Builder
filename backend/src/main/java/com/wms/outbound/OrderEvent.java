@@ -3,6 +3,8 @@ package com.wms.outbound;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -14,9 +16,9 @@ import jakarta.persistence.Table;
 /** One entry in an order's activity log. */
 @Entity
 @Table(name = "order_events")
-public class OrderEvent {
+public class OrderEvent extends FacilityRecord {
 
-    public enum Type { RECEIVED, ALLOCATED, SHORT, TASKS_CREATED, PICKED, DROPPED, PACKED, SHIPPED, CLOSED_SHORT, CANCELLED }
+    public enum Type { RECEIVED, ALLOCATED, SHORT, TASKS_CREATED, PICKED, DROPPED, PACKED, SHIPPED, CLOSED_SHORT, UNDONE, CANCELLED }
 
     @Id
     private UUID id;

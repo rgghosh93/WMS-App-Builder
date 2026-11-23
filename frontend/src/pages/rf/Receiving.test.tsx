@@ -112,6 +112,8 @@ beforeEach(() => {
         if (path === '/api/rf/receiving/locations/DC1-DOCK-01') return json(DOOR);
         if (path === '/api/rf/receiving/asns') return json([{ ...asn, lineCount: 2 }]);
         if (path === '/api/rf/receiving/asns/AS000001') return json(asn);
+        if (path === '/api/rf/receiving/blind/a1/items/222000') return json(DRILL);
+        if (path.startsWith('/api/rf/receiving/blind/')) return json({ detail: 'NOPE is not a known item' }, 400);
         return json({ detail: 'NOPE is not a known ASN' }, 400);
       }
       posts.push({ path, body: JSON.parse(String(init.body)) });
@@ -298,5 +300,65 @@ describe('Receiving', () => {
     await user.click(await screen.findByRole('button', { name: 'Close short' }));
     expect(await screen.findByRole('status')).toHaveTextContent('AS000001 is closed.');
     expect(posts.map((p) => p.body.acceptShort)).toEqual([false, true]);
+  });
+});
+
+describe('Receiving without an ASN', () => {
+  const BLIND: AsnDetail = { ...ASN, asnNumber: 'BR000001', vendorName: 'Sunrise Foods', status: 'RECEIVING', blind: true, expectedQuantity: 0, expectedDate: null, lines: [] };
+
+  async function begin(user: UserEvent) {
+    render(
+      <MemoryRouter initialEntries={['/rf/receiving']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/rf/*" element={<RfApp />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole('button', { name: /DC1-RCV-01/ }));
+    await user.click(await screen.findByRole('button', { name: 'Receive without an ASN' }));
+  }
+
+  it('starts one, receives any item, and finishes it', async () => {
+    const user = userEvent.setup();
+    await begin(user);
+    await user.type(screen.getByLabelText('Who is it from? (optional)'), 'Sunrise Foods');
+    await user.type(screen.getByLabelText(/PO, bill of lading/), 'PO-9');
+    replies['/api/rf/receiving/blind'] = ['offline', { body: BLIND }];
+    await user.click(screen.getByRole('button', { name: 'Start receiving' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Can't reach the WMS");
+    await user.click(screen.getByRole('button', { name: 'Start receiving' }));
+    expect(await screen.findByText('0 EA received, without an ASN')).toBeInTheDocument();
+    expect(posts[1].body).toEqual({ requestId: posts[0].body.requestId, owner: null, vendorName: 'Sunrise Foods', reference: 'PO-9' });
+    expect(screen.queryByRole('button', { name: 'Finish receipt' })).not.toBeInTheDocument();
+
+    replies[`${API}/lpn`] = [{ body: OPEN_LPN }];
+    await scan(user, 'LPN', 'LP1');
+    await scan(user, 'Item', 'nope');
+    expect(await screen.findByRole('alert')).toHaveTextContent('NOPE is not a known item');
+    await scan(user, 'Item', '222000');
+    await scan(user, 'Serial number 1', 'd-1');
+    replies[`${API}/receive`] = [
+      { body: { ...BLIND, receivedQuantity: 1, lines: [line({ item: DRILL, expectedQuantity: 0, receivedQuantity: 1, remaining: 0, lotNumber: null })], receipts: [{ ...RECEIPT, quantity: 1 }] } },
+    ];
+    await user.click(screen.getByRole('button', { name: 'Receive 1' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Received 1 EA of SKU-DRILL into LP1');
+    await user.click(screen.getByRole('button', { name: 'Next LPN' }));
+    expect(screen.getByText('1 EA received, without an ASN')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Finish receipt' }));
+    replies[`${API}/close`] = [{ body: { ...BLIND, status: 'RECEIVED' } }];
+    await user.click(within(screen.getByRole('group', { name: 'Finish receipt' })).getByRole('button', { name: 'Finish receipt' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('BR000001 is closed.');
+  });
+
+  it('asks whose it is, and can be discarded', async () => {
+    const user = userEvent.setup();
+    await begin(user);
+    replies['/api/rf/receiving/blind'] = [{ status: 409, body: { detail: 'Say whose it is.', errors: { owner: 'ACME,HOUSE' } } }, { body: BLIND }];
+    await user.click(screen.getByRole('button', { name: 'Start receiving' }));
+    await user.click(await screen.findByRole('button', { name: 'ACME' }));
+    expect(posts[1].body).toMatchObject({ owner: 'ACME', requestId: posts[0].body.requestId });
+    replies['/api/rf/receiving/blind/a1/discard'] = [{ body: { ...BLIND, status: 'CANCELLED' } }];
+    await user.click(await screen.findByRole('button', { name: 'Discard it: nothing was received' }));
+    expect(await screen.findByText('Scan an ASN')).toBeInTheDocument();
   });
 });

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
 import com.wms.users.AppUser;
@@ -26,7 +27,7 @@ import jakarta.persistence.Version;
 /** Moving one received LPN into storage. Where to is decided when someone starts it. */
 @Entity
 @Table(name = "putaway_tasks")
-public class PutawayTask {
+public class PutawayTask extends FacilityRecord {
 
     @Id
     private UUID id;

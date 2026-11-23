@@ -1,5 +1,7 @@
 import { TRANSACTION_TYPES, listHistory, transactionLabel, type Transaction } from '../../../api/control';
 import { inventoryStatusLabel } from '../../../api/inventory';
+import { useOwners } from '../../../api/owners';
+import { OwnerFilter } from '../../../components/OwnerSelect';
 import { FilterSelect, ListPage } from '../../../components/ListPage';
 import { useList } from '../../../components/useList';
 import { formatDateTime, formatDay } from '../../outbound/OrdersPage';
@@ -20,6 +22,7 @@ export function StockHistoryPage() {
       searchPlaceholder="Search item, lot, LPN, location, reference or person…"
       filters={
         <>
+          <OwnerFilter value={get('owner')} onChange={(owner) => list.update({ owner })} />
           <FilterSelect label="Change" value={get('type')} options={TRANSACTION_TYPES} onChange={(type) => list.update({ type })} />
           <label className="select-inline">
             <span>From</span>
@@ -64,6 +67,7 @@ export function InventoryMovesPage() {
 }
 
 function TransactionTable({ rows }: { rows: Transaction[] }) {
+  const { several } = useOwners();
   return (
     <table className="table" aria-label="Stock history">
       <thead>
@@ -94,6 +98,7 @@ function TransactionTable({ rows }: { rows: Transaction[] }) {
             </td>
             <td>
               <span className="code">{t.itemCode}</span>
+              {several && t.owner && <span className="muted cell__sub">{t.owner}</span>}
               {(t.lotNumber || t.serialNumber || t.expiryDate) && (
                 <span className="muted cell__sub">
                   {[t.lotNumber && `lot ${t.lotNumber}`, t.serialNumber, t.expiryDate && `expires ${formatDay(t.expiryDate)}`].filter(Boolean).join(' · ')}

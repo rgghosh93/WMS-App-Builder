@@ -18,6 +18,7 @@ public final class UserRequests {
     }
 
     /**
+     * @param facilityIds where they work; everywhere if empty or left out
      * @param pin      for devices; leave out if they don't use any
      * @param password for the desktop; leave out if they don't use it. They choose their own the first time
      */
@@ -26,6 +27,7 @@ public final class UserRequests {
             @NotBlank @Size(max = 120) String displayName,
             @NotNull ActiveStatus status,
             Set<UUID> roleIds,
+            Set<UUID> facilityIds,
             String pin,
             String password) {
         @Override
@@ -39,6 +41,7 @@ public final class UserRequests {
             @NotBlank @Size(max = 120) String displayName,
             @NotNull ActiveStatus status,
             Set<UUID> roleIds,
+            Set<UUID> facilityIds,
             Long version) {
     }
 

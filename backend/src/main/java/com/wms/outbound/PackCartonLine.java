@@ -2,6 +2,8 @@ package com.wms.outbound;
 
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -13,7 +15,7 @@ import jakarta.persistence.Table;
 /** How much of one packing detail is in a carton. */
 @Entity
 @Table(name = "pack_carton_lines")
-public class PackCartonLine {
+public class PackCartonLine extends FacilityRecord {
 
     @Id
     private UUID id;

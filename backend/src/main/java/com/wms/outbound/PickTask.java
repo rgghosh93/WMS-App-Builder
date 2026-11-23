@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.zone.Zone;
@@ -35,7 +36,7 @@ import jakarta.persistence.Version;
  */
 @Entity
 @Table(name = "pick_tasks")
-public class PickTask {
+public class PickTask extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -147,6 +148,34 @@ public class PickTask {
             }
         }
         return cancelled.size();
+    }
+
+    /**
+     * Takes an order off the task altogether, whatever is picked of it. If something was picked the task still has to be
+     * dropped, so that what is in the container gets back.
+     *
+     * @return how many picks were still open
+     */
+    int undoFor(OutboundOrder order) {
+        int open = 0;
+        for (PickTaskDetail d : details) {
+            if (d.getOrder().getId().equals(order.getId()) && d.getStatus() != PickDetailStatus.CANCELLED) {
+                open += d.getStatus() == PickDetailStatus.OPEN ? 1 : 0;
+                if (d.getStatus() == PickDetailStatus.OPEN || d.getPickedQuantity() > 0) {
+                    d.undo();
+                }
+            }
+        }
+        if ((status == PickTaskStatus.OPEN || status == PickTaskStatus.IN_PROGRESS) && noneOpen()) {
+            if (anyPicked()) {
+                finishPicking();
+            } else {
+                status = PickTaskStatus.CANCELLED;
+            }
+        }
+        // So that someone dropping it at the same time notices.
+        updatedAt = Instant.now();
+        return open;
     }
 
     boolean hasOpenFor(OutboundOrder order) {

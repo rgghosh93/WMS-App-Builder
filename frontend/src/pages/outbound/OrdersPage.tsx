@@ -14,6 +14,8 @@ import {
   type OrderSummary,
 } from '../../api/orders';
 import { errorMessage, type Page } from '../../api/http';
+import { useOwners } from '../../api/owners';
+import { OwnerFilter } from '../../components/OwnerSelect';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
@@ -50,6 +52,7 @@ export function OrdersPage() {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
+  const { several } = useOwners();
   // Orders picked to allocate together on one batch pick task. Kept across pages and searches.
   const [selected, setSelected] = useState<Map<string, string>>(new Map());
   const [batching, setBatching] = useState(false);
@@ -130,7 +133,7 @@ export function OrdersPage() {
   }, [queryKey, reloadKey]);
 
   const page = state.status === 'ready' ? state.page : state.status === 'loading' ? state.previous : undefined;
-  const filtered = Boolean(query.q || query.status);
+  const filtered = Boolean(query.q || query.status || query.owner);
 
   const toggleSort = (field: OrderSortField) => {
     const dir = query.sort === field && query.dir === 'desc' ? 'asc' : 'desc';
@@ -175,6 +178,7 @@ export function OrdersPage() {
             ))}
           </select>
         </label>
+        <OwnerFilter value={query.owner ?? ''} onChange={(owner) => updateQuery({ owner })} />
         <span className="toolbar__count muted" aria-live="polite">
           {page ? `${page.totalElements.toLocaleString()} order${page.totalElements === 1 ? '' : 's'}` : ''}
         </span>
@@ -250,6 +254,7 @@ export function OrdersPage() {
                     <Link className="link-button code" to={`/outbound/orders/${o.id}`} onClick={(e) => e.stopPropagation()}>
                       {o.orderNumber}
                     </Link>
+                    {several && o.owner && <span className="muted cell__sub">{o.owner.code}</span>}
                   </th>
                   <td>{o.customerName}</td>
                   <td>
@@ -322,6 +327,7 @@ function readQuery(params: URLSearchParams): OrderQuery {
   const page = Number(params.get('page'));
   return {
     q: params.get('q') ?? '',
+    owner: params.get('owner') ?? '',
     status: status && STATUS_VALUES.includes(status) ? status : '',
     sort: sort && SORT_FIELDS.includes(sort) ? sort : 'createdAt',
     dir: params.get('dir') === 'asc' ? 'asc' : 'desc',
@@ -333,6 +339,7 @@ function readQuery(params: URLSearchParams): OrderQuery {
 function writeQuery(q: OrderQuery): URLSearchParams {
   const params = new URLSearchParams();
   if (q.q) params.set('q', q.q);
+  if (q.owner) params.set('owner', q.owner);
   if (q.status) params.set('status', q.status);
   if (q.sort !== 'createdAt') params.set('sort', q.sort);
   if (q.dir !== 'desc') params.set('dir', q.dir);

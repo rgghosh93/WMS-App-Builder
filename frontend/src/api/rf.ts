@@ -1,3 +1,4 @@
+import type { FacilityRef } from './facilities';
 import { request } from './http';
 import type { ItemRef, PickMethod } from './orders';
 import type { Permission } from './session';
@@ -9,6 +10,10 @@ export interface DeviceUser {
   displayName: string;
   /** What they may do on devices. */
   permissions?: Permission[];
+  /** Where they are working. */
+  facility?: FacilityRef;
+  /** Everywhere they may. */
+  facilities?: FacilityRef[];
 }
 
 export function currentUser(signal?: AbortSignal): Promise<DeviceUser> {
@@ -17,6 +22,11 @@ export function currentUser(signal?: AbortSignal): Promise<DeviceUser> {
 
 export function signIn(userCode: string, pin: string): Promise<DeviceUser> {
   return request('/api/rf/session', { method: 'POST', body: JSON.stringify({ userCode, pin }) });
+}
+
+/** Goes on working in another facility, once nothing is left half done. */
+export function goToFacilityOnDevice(facilityId: string): Promise<DeviceUser> {
+  return request('/api/rf/session/facility', { method: 'PUT', body: JSON.stringify({ facilityId }) });
 }
 
 export function signOut(): Promise<void> {

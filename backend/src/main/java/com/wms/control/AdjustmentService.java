@@ -29,10 +29,13 @@ import com.wms.masterdata.container.Container;
 import com.wms.masterdata.container.ContainerRepository;
 import com.wms.masterdata.container.ContainerStatus;
 import com.wms.masterdata.item.Item;
-import com.wms.masterdata.item.ItemRepository;
+import com.wms.masterdata.item.ItemFinder;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.location.LocationRepository;
 import com.wms.masterdata.location.LocationType;
+
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 /** Correcting how much stock there is. Changes over the limit wait for someone else to approve them. */
 @Service
@@ -41,7 +44,7 @@ public class AdjustmentService {
 
     private final AdjustmentRepository adjustments;
     private final InventoryRepository inventory;
-    private final ItemRepository items;
+    private final ItemFinder items;
     private final LocationRepository locations;
     private final ContainerRepository containers;
     private final StockQueryService stock;
@@ -51,9 +54,12 @@ public class AdjustmentService {
     private final PlannedMoves moves;
     private final ReasonService reasons;
 
-    AdjustmentService(AdjustmentRepository adjustments, InventoryRepository inventory, ItemRepository items, LocationRepository locations,
+    private final EntityManager em;
+
+    AdjustmentService(AdjustmentRepository adjustments, InventoryRepository inventory, ItemFinder items, LocationRepository locations,
                       ContainerRepository containers, StockQueryService stock, LocationLocks locks, LpnLifecycle lpns,
-                      StockLedger ledger, ReasonService reasons, PlannedMoves moves) {
+                      StockLedger ledger, ReasonService reasons, PlannedMoves moves, EntityManager em) {
+        this.em = em;
         this.adjustments = adjustments;
         this.inventory = inventory;
         this.items = items;
@@ -76,7 +82,8 @@ public class AdjustmentService {
     }
 
     /** Stock found where none was recorded: loose at a storage location, or in an LPN that is at one. */
-    public record Add(String itemId, String locationId, String lpnId, Integer quantity, String lotNumber, LocalDate expiryDate,
+    /** @param owner code of whose item it is, if several have one with this ID */
+    public record Add(String itemId, String owner, String locationId, String lpnId, Integer quantity, String lotNumber, LocalDate expiryDate,
                       String serialNumber, InventoryStatus status, UUID reasonId, String note) {
     }
 
@@ -130,13 +137,9 @@ public class AdjustmentService {
 
     public AdjustmentView add(Actor actor, Add request) {
         String why = reasons.text(request.reasonId(), ReasonCode.Kind.ADJUSTMENT, request.note());
-        String code = Codes.normalize(request.itemId());
-        Item item = code == null ? null : items.findByItemId(code).orElse(null);
-        if (item == null) {
-            throw invalid("itemId", code == null ? "Choose an item" : code + " is not a known item");
-        }
+        Item item = items.byId(request.itemId(), request.owner(), "itemId");
         if (item.getStatus() == ActiveStatus.INACTIVE) {
-            throw invalid("itemId", code + " is inactive");
+            throw invalid("itemId", item.getItemId() + " is inactive");
         }
         int quantity = request.quantity() == null ? 0 : request.quantity();
         if (quantity < 1 || quantity > 1_000_000) {
@@ -231,6 +234,8 @@ public class AdjustmentService {
                 : inventory.findByContainer_IdIn(List.of(r.getContainer().getId()));
         InventoryRecord same = there.stream().filter(r::mergesWith).findFirst().orElse(null);
         if (same != null) {
+            // Read again under a lock: someone else may be adding to it at the same time.
+            em.refresh(same, LockModeType.PESSIMISTIC_WRITE);
             same.setQuantity(same.getQuantity() + r.getQuantity());
         } else {
             inventory.save(r);

@@ -13,13 +13,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.util.WebUtils;
 
 import com.wms.common.api.ApiException;
+import com.wms.facility.Site;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Who may call what. Everything under /api needs someone signed in, except signing in itself. Device
+ * Who may call what, and in which facility. Everything under /api needs someone signed in, except signing in itself. Device
  * requests and changes on the desktop also need the permission their controller or method
  * {@link Requires}; if it says none, they are refused.
  */
@@ -39,7 +40,7 @@ public class AccessConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SameSite()).addPathPatterns("/api/**");
-        registry.addInterceptor(new Device()).addPathPatterns("/api/rf/**").excludePathPatterns("/api/rf/session");
+        registry.addInterceptor(new Device()).addPathPatterns("/api/rf/**").excludePathPatterns("/api/rf/session", "/api/rf/session/**");
         registry.addInterceptor(new Desktop()).addPathPatterns("/api/**")
                 .excludePathPatterns("/api/rf/**", "/api/session", "/api/session/**");
     }
@@ -62,7 +63,13 @@ public class AccessConfig implements WebMvcConfigurer {
             DeviceUser user = devices.find(cookie(request, DeviceSessionController.COOKIE)).orElseThrow(AccessConfig::signInFirst);
             require(handler, user.permissions(), true);
             request.setAttribute(DeviceUser.ATTRIBUTE, user);
+            Site.enter(user.facility().id());
             return true;
+        }
+
+        @Override
+        public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception e) {
+            Site.leave();
         }
     }
 
@@ -77,7 +84,13 @@ public class AccessConfig implements WebMvcConfigurer {
             }
             require(handler, user.permissions(), !READING.contains(request.getMethod()));
             request.setAttribute(DesktopUser.ATTRIBUTE, user);
+            Site.enter(user.facility().id());
             return true;
+        }
+
+        @Override
+        public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception e) {
+            Site.leave();
         }
     }
 

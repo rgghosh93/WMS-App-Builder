@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
 import { ArrowDownToLine, ArrowLeftRight, ChevronRight, ClipboardList, FastForward, Hand, LogOut, Menu as MenuIcon, Package, PackageOpen, RefreshCw, Truck, type LucideIcon } from 'lucide-react';
-import type { DeviceUser } from '../../api/rf';
+import { errorMessage } from '../../api/http';
+import { goToFacilityOnDevice, type DeviceUser } from '../../api/rf';
 import type { Permission } from '../../api/session';
 import { CountTransaction } from './CountTransaction';
 import { LoadingTransaction } from './LoadingTransaction';
@@ -16,13 +18,16 @@ import { SessionGate } from './SessionGate';
 export function RfApp() {
   return (
     <SessionGate>
-      {({ user, leave, onSignedOut, signOutError }) => (
+      {({ user, leave, onSignedOut, onUser, signOutError }) => (
         <div className="rf">
           <header className="rf-bar">
             <Link to="/rf" className="rf-bar__button" aria-label="Menu">
               <MenuIcon size={22} aria-hidden="true" />
             </Link>
-            <span className="rf-bar__user">{user.displayName}</span>
+            <span className="rf-bar__user">
+              {user.displayName}
+              {user.facility && (user.facilities?.length ?? 0) > 1 && <span className="rf-bar__facility">{user.facility.code}</span>}
+            </span>
             {mayUse(user, 'DEVICE_NEXT') && (
               <Link to="/rf/next" className="rf-bar__button" aria-label="Next task">
                 <FastForward size={20} aria-hidden="true" />
@@ -39,7 +44,7 @@ export function RfApp() {
               </p>
             )}
             <Routes>
-              <Route index element={<TransactionMenu user={user} />} />
+              <Route index element={<TransactionMenu user={user} onUser={onUser} />} />
               <Route path="next" element={<NextTransaction onSignedOut={onSignedOut} />} />
               <Route path="picking" element={<PickingTransaction onSignedOut={onSignedOut} />} />
               <Route path="receiving" element={<ReceivingTransaction onSignedOut={onSignedOut} />} />
@@ -69,12 +74,52 @@ const TRANSACTIONS: { permission: Permission; to: string; label: string; icon: L
   { permission: 'DEVICE_LOAD', to: '/rf/loading', label: 'Loading', icon: Truck },
 ];
 
+/** Where they are working, for those who may work in several places. */
+function FacilityChoice({ user, onUser }: { user: DeviceUser; onUser: (user: DeviceUser) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const facilities = user.facilities ?? [];
+  if (!user.facility || facilities.length < 2) return null;
+
+  const go = async (id: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      onUser(await goToFacilityOnDevice(id));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <label className="scan">
+        <span className="scan__label">Facility</span>
+        <select className="scan__input" value={user.facility.id} disabled={busy} onChange={(e) => void go(e.target.value)}>
+          {facilities.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.code} · {f.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error && (
+        <p className="rf-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
 function mayUse(user: DeviceUser, permission: Permission): boolean {
   return !user.permissions || user.permissions.includes(permission);
 }
 
 /** The transactions this person may use. */
-function TransactionMenu({ user }: { user: DeviceUser }) {
+function TransactionMenu({ user, onUser }: { user: DeviceUser; onUser: (user: DeviceUser) => void }) {
   const allowed = TRANSACTIONS.filter((t) => mayUse(user, t.permission));
   return (
     <>
@@ -88,6 +133,7 @@ function TransactionMenu({ user }: { user: DeviceUser }) {
           </Link>
         ))}
       </nav>
+      <FacilityChoice user={user} onUser={onUser} />
       {allowed.length === 0 && <p className="muted">You don't have access to anything here. Ask an administrator.</p>}
     </>
   );

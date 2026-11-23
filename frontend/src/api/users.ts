@@ -1,4 +1,5 @@
 import type { ActiveStatus } from './containerTypes';
+import type { FacilityRef } from './facilities';
 import { request, type Page } from './http';
 import type { Permission } from './session';
 
@@ -9,6 +10,8 @@ export interface User {
   displayName: string;
   status: ActiveStatus;
   roles: { id: string; name: string }[];
+  /** Where they work; everywhere if empty. */
+  facilities?: FacilityRef[];
   /** Can sign in to devices, if a role allows it. */
   hasPin: boolean;
   /** Can sign in to the desktop, if a role allows it. */
@@ -54,6 +57,8 @@ export interface UserInput {
   displayName: string;
   status: ActiveStatus;
   roleIds: string[];
+  /** Everywhere if empty. */
+  facilityIds: string[];
 }
 
 /** A password given here only serves to choose their own. */

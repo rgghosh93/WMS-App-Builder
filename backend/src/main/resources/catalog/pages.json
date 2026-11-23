@@ -5,14 +5,14 @@
     "description": "Facilities, locations, items and trading partners",
     "icon": "database",
     "pages": [
-      { "id": "facilities", "title": "Facilities", "description": "Warehouses and their settings", "route": "/master-data/facilities", "status": "PLANNED" },
+      { "id": "facilities", "title": "Facilities", "description": "Buildings the warehouse is run in", "route": "/master-data/facilities", "status": "AVAILABLE" },
       { "id": "zones", "title": "Zones", "description": "Groups of locations for allocation, picking, put-away and counting", "route": "/master-data/zones", "status": "AVAILABLE" },
       { "id": "locations", "title": "Locations", "description": "Storage locations, their identifiers and dimensions", "route": "/master-data/locations", "status": "AVAILABLE" },
       { "id": "items", "title": "Items", "description": "SKUs, barcodes, tracking and unit dimensions", "route": "/master-data/items", "status": "AVAILABLE" },
       { "id": "container-types", "title": "Container Types", "description": "Pallets, cartons, totes, bins and their sizes", "route": "/master-data/container-types", "status": "AVAILABLE" },
       { "id": "containers", "title": "Containers", "description": "Permanent totes, bins and other containers, by LPN", "route": "/master-data/containers", "status": "AVAILABLE" },
       { "id": "units-of-measure", "title": "Units of Measure", "description": "Eaches, inner packs, cases and pallets", "route": "/master-data/units-of-measure", "status": "AVAILABLE" },
-      { "id": "clients", "title": "Clients", "description": "Inventory owners and 3PL clients", "route": "/master-data/clients", "status": "PLANNED" },
+      { "id": "owners", "title": "Owners", "description": "Whose stock it is: your own company and the clients you keep stock for", "route": "/master-data/owners", "status": "AVAILABLE" },
       { "id": "carriers", "title": "Carriers", "description": "Carriers and shipping services", "route": "/master-data/carriers", "status": "AVAILABLE" },
       { "id": "vendors", "title": "Vendors", "description": "Suppliers that ship to the warehouse", "route": "/master-data/vendors", "status": "PLANNED" }
     ]

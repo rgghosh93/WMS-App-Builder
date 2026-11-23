@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PutBack } from '../../api/control';
 import type { Carton, PackDetail, PackTask } from '../../api/packing';
 import type { OrderRef } from '../../api/orders';
 import { PackTaskDetailPage } from '../packing/PackTaskDetailPage';
@@ -29,6 +30,7 @@ function detail(n: number, extra: Partial<PackDetail> = {}): PackDetail {
     quantity: 12,
     packedQuantity: 0,
     shortQuantity: 0,
+    cancelledQuantity: 0,
     itemScans: [
       { value: '111000', uom: 'EA', eachesPerUnit: 1 },
       { value: 'SKU-BAR', uom: 'EA', eachesPerUnit: 1 },
@@ -36,7 +38,7 @@ function detail(n: number, extra: Partial<PackDetail> = {}): PackDetail {
     ],
     ...extra,
   };
-  return { ...d, remaining: d.quantity - d.packedQuantity - d.shortQuantity };
+  return { ...d, remaining: d.quantity - d.packedQuantity - d.shortQuantity - d.cancelledQuantity };
 }
 
 const DRILL: Partial<PackDetail> = {
@@ -96,10 +98,12 @@ type Reply = { status?: number; body: unknown };
 let calls: { method: string; path: string; body?: Record<string, unknown> }[];
 let replies: Record<string, Reply[]>;
 let queue: PackTask[];
+let putBack: PutBack[];
 /** What reloading the task returns. */
 let current: PackTask;
 
 beforeEach(() => {
+  putBack = [];
   localStorage.clear();
   calls = [];
   replies = {};
@@ -117,6 +121,7 @@ beforeEach(() => {
         if (path === '/api/rf/session') return json(USER);
         if (path.endsWith('/stations')) return json(STATIONS);
         if (path.startsWith('/api/rf/packing/stations/')) return json({ station: { id: 's1', locationId: 'DC1-PACK-01' }, tasks: queue });
+        if (path === '/api/inventory/put-back') return json(putBack);
         if (path === '/api/rf/packing/carton-types') return json(TYPES);
         if (path === '/api/rf/packing/tasks/t1' || path === '/api/pack-tasks/t1') return json(current);
         if (path.startsWith('/api/pack-tasks?')) {
@@ -303,6 +308,31 @@ describe('Pack station', () => {
     expect(await screen.findByText('BOX1 emptied and discarded.')).toBeInTheDocument();
   });
 
+  it('leaves what is for a cancelled order in the container', async () => {
+    const user = userEvent.setup();
+    const left = [detail(1, { cancelledQuantity: 12 }), detail(2, { order: SO2, quantity: 2, packedQuantity: 2 })];
+    const cartons = [carton('BOX1', { status: 'CANCELLED', contents: IN_CARTON, totalQuantity: 12 }), carton('BOX2', { order: SO2, contents: IN_CARTON, totalQuantity: 2 })];
+    const open2 = task(left, cartons, { orders: [SO2] });
+    replies[`${T1}/cartons/c-BOX2/close`] = [{ body: { ...open2, status: 'COMPLETED' } }];
+    await open(user, open2);
+    expect(screen.getByRole('note')).toHaveTextContent('Leave it there: it goes back to storage.');
+    expect(within(screen.getByRole('table', { name: 'Container contents' })).getAllByRole('row')).toHaveLength(2);
+    expect(screen.getByRole('region', { name: 'Carton BOX1' })).toHaveTextContent('Called off');
+    await user.click(screen.getByRole('button', { name: 'Close carton' }));
+    expect(await screen.findByText('PK000001 is packed in 1 carton. What is left in TOTE1 goes back to storage.')).toBeInTheDocument();
+  });
+
+  it('says so when all of it is called off', async () => {
+    const user = userEvent.setup();
+    replies[`${T1}/pack`] = [{ status: 409, body: { detail: 'PK000001 is called off: what is in TOTE1 goes back to storage.' } }];
+    current = task([detail(1, { cancelledQuantity: 12 })], [], { status: 'CANCELLED' });
+    await open(user, task([detail(1)], [carton('BOX1')]));
+    await scan(user, 'Scan item', '111006');
+    await scan(user, /Quantity|How many/, '1');
+    expect(await screen.findByText('PK000001 is called off: what is in TOTE1 goes back to storage.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Scan a container to pack')).toBeInTheDocument();
+  });
+
   it('notices when someone else has taken over', async () => {
     const user = userEvent.setup();
     replies[`${T1}/pack`] = [{ status: 409, body: { detail: 'PK000001 is being packed by Bob Ray.' } }];
@@ -328,6 +358,17 @@ describe('Packing tasks', () => {
     await screen.findByRole('option', { name: 'DC1-PACK-02' });
     await user.selectOptions(screen.getByLabelText('Station'), 's2');
     await waitFor(() => expect(calls.some((c) => c.path.includes('status=COMPLETED') && c.path.includes('stationId=s2'))).toBe(true));
+  });
+
+  it('shows what is to be put back from the stations', async () => {
+    putBack = [
+      { location: 'DC1-PACK-01', lpn: 'TOTE1', items: ['SKU-BAR', 'SKU-CUP'], quantity: 12, held: 0 },
+      { location: 'DC1-PACK-02', lpn: null, items: ['SKU-BAR'], quantity: 3, held: 3 },
+    ];
+    renderAt('/pack-ship/packing-tasks');
+    const table = await screen.findByRole('table', { name: 'To put back' });
+    expect(within(table).getByText('TOTE1').closest('tr')).toHaveTextContent('DC1-PACK-01TOTE1SKU-BAR, SKU-CUP12 EA');
+    expect(within(table).getByText('Loose').closest('tr')).toHaveTextContent('3 EA3 on hold or damaged');
   });
 
   it('shows a task with its details and cartons', async () => {

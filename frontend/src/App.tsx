@@ -18,6 +18,8 @@ import { AllocationsPage } from './pages/outbound/AllocationsPage';
 import { OrderDetailPage } from './pages/outbound/OrderDetailPage';
 import { OrdersPage } from './pages/outbound/OrdersPage';
 import { PickTaskDetailPage } from './pages/picking/PickTaskDetailPage';
+import { FacilitiesPage } from './pages/masterdata/FacilitiesPage';
+import { OwnersPage } from './pages/masterdata/OwnersPage';
 import { CarriersPage } from './pages/masterdata/CarriersPage';
 import { ZoneDetailPage } from './pages/masterdata/ZoneDetailPage';
 import { ZonesPage } from './pages/masterdata/ZonesPage';
@@ -59,6 +61,8 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
           <Route path="master-data/locations" element={<LocationsPage />} />
+          <Route path="master-data/facilities" element={<FacilitiesPage />} />
+          <Route path="master-data/owners" element={<OwnersPage />} />
           <Route path="master-data/zones" element={<ZonesPage />} />
           <Route path="master-data/zones/:id" element={<ZoneDetailPage />} />
           <Route path="master-data/items" element={<ItemsPage />} />

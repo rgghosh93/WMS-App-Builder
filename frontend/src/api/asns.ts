@@ -1,4 +1,5 @@
 import { request, type Page } from './http';
+import type { OwnerRef } from './owners';
 import type { InventoryStatus } from './inventory';
 import type { ContainerTypeOption, ItemScan } from './rf';
 
@@ -17,11 +18,15 @@ export function asnStatusLabel(status: AsnStatus): string {
 
 export interface AsnSummary {
   id: string;
+  /** Whose it is. */
+  owner?: OwnerRef | null;
   asnNumber: string;
   vendorName: string;
   reference: string | null;
   expectedDate: string | null;
   status: AsnStatus;
+  /** Nobody announced it, so nothing is expected on it. */
+  blind?: boolean;
   lineCount: number;
   expectedQuantity: number;
   receivedQuantity: number;
@@ -84,6 +89,7 @@ export type AsnSortField = 'createdAt' | 'asnNumber' | 'vendorName' | 'expectedD
 export interface AsnQuery {
   q: string;
   status: AsnStatus | '';
+  owner?: string;
   page: number;
   size: number;
   sort: AsnSortField;
@@ -91,6 +97,8 @@ export interface AsnQuery {
 }
 
 export interface AsnInput {
+  /** Code of whose it is; the first owner if left out. */
+  owner?: string;
   asnNumber: string | null;
   vendorName: string;
   reference: string | null;
@@ -102,6 +110,7 @@ export function listAsns(query: AsnQuery, signal?: AbortSignal): Promise<Page<As
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.status) params.set('status', query.status);
+  if (query.owner) params.set('owner', query.owner);
   params.set('page', String(query.page));
   params.set('size', String(query.size));
   params.set('sort', query.sort);
@@ -180,8 +189,23 @@ export function listOpenAsns(signal?: AbortSignal): Promise<AsnSummary[]> {
   return request(`${RF}/asns`, { signal });
 }
 
-export function getOpenAsn(number: string): Promise<AsnDetail> {
-  return request(`${RF}/asns/${encodeURIComponent(number)}`);
+export function getOpenAsn(number: string, owner?: string): Promise<AsnDetail> {
+  return request(`${RF}/asns/${encodeURIComponent(number)}${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`);
+}
+
+/** @param requestId made here, so that starting it again starts nothing more */
+export function startBlind(input: { requestId: string; owner: string | null; vendorName: string; reference: string }): Promise<AsnDetail> {
+  return post('blind', input);
+}
+
+/** Gives up on a blind receipt with nothing received. */
+export function discardBlind(id: string): Promise<AsnDetail> {
+  return post(`blind/${id}/discard`, {});
+}
+
+/** An item to receive blind, by what was scanned. */
+export function getBlindItem(id: string, code: string): Promise<AsnItem> {
+  return request(`${RF}/blind/${id}/items/${encodeURIComponent(code)}`);
 }
 
 /** A blank LPN makes a new LPN number. */

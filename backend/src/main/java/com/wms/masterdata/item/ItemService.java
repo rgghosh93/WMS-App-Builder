@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.wms.common.ActiveStatus;
 import com.wms.common.Codes;
 import com.wms.common.api.ApiException;
+import com.wms.masterdata.owner.Owners;
 import com.wms.masterdata.uom.UnitOfMeasure;
 import com.wms.masterdata.uom.UnitOfMeasureRepository;
 
@@ -30,13 +31,15 @@ public class ItemService {
     private final ItemUomRepository itemUomRepository;
     private final UnitOfMeasureRepository uomRepository;
     private final List<ItemUsage> usages;
+    private final Owners owners;
 
     public ItemService(ItemRepository repository, ItemUomRepository itemUomRepository,
-                       UnitOfMeasureRepository uomRepository, List<ItemUsage> usages) {
+                       UnitOfMeasureRepository uomRepository, List<ItemUsage> usages, Owners owners) {
         this.repository = repository;
         this.itemUomRepository = itemUomRepository;
         this.uomRepository = uomRepository;
         this.usages = usages;
+        this.owners = owners;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +54,7 @@ public class ItemService {
 
     public ItemResponse create(ItemRequest request) {
         Item item = new Item(UUID.randomUUID());
+        item.setOwner(owners.forNew(request.owner()));
         apply(item, request, true);
         return ItemResponse.from(repository.save(item));
     }
@@ -62,6 +66,9 @@ public class ItemService {
         }
         if (request.version() != item.getVersion()) {
             throw ApiException.conflict("This item was changed by someone else. Reload it and try again.", Map.of());
+        }
+        if (request.owner() != null && !request.owner().isBlank() && !owners.named(request.owner()).getId().equals(item.getOwnerId())) {
+            throw ApiException.invalid("Some fields need attention", Map.of("owner", "can't be changed"));
         }
         apply(item, request, false);
         if (request.uoms() != null) {
@@ -114,11 +121,11 @@ public class ItemService {
         String barcode = blankToNull(request.barcode());
         UUID self = item.getId();
 
-        repository.findByItemId(itemId)
+        repository.findByOwnerIdAndItemId(item.getOwnerId(), itemId)
                 .filter(other -> !other.getId().equals(self))
                 .ifPresent(other -> errors.put("itemId", "already used by another item"));
         if (barcode != null) {
-            barcodeOwner(barcode, self).ifPresent(owner -> errors.put("barcode", "already assigned to " + owner));
+            barcodeOwner(barcode, item).ifPresent(owner -> errors.put("barcode", "already assigned to " + owner));
         }
         if (packs == null && barcode != null
                 && item.getUoms().stream().anyMatch(p -> barcode.equals(p.getBarcode()))) {
@@ -132,7 +139,7 @@ public class ItemService {
                     errors.put("uoms[" + i + "].barcode", "same as the item's own barcode");
                 } else {
                     final int index = i;
-                    barcodeOwner(packBarcode, self).ifPresent(owner ->
+                    barcodeOwner(packBarcode, item).ifPresent(owner ->
                             errors.put("uoms[" + index + "].barcode", "already assigned to " + owner));
                 }
             }
@@ -231,15 +238,16 @@ public class ItemService {
         item.getUoms().sort((a, b) -> Integer.compare(a.getQuantity(), b.getQuantity()));
     }
 
-    /** Who else already uses a barcode: another item, or another item's packaging level. */
-    private Optional<String> barcodeOwner(String barcode, UUID self) {
-        Optional<String> asItem = repository.findByBarcode(barcode)
+    /** Who else of the same owner already uses a barcode: another item, or another item's packaging level. */
+    private Optional<String> barcodeOwner(String barcode, Item of) {
+        UUID self = of.getId();
+        Optional<String> asItem = repository.findByOwnerIdAndBarcode(of.getOwnerId(), barcode)
                 .filter(other -> !other.getId().equals(self))
                 .map(other -> "item " + other.getItemId());
         if (asItem.isPresent()) {
             return asItem;
         }
-        return itemUomRepository.findFirstByBarcode(barcode)
+        return itemUomRepository.findFirstByBarcodeAndItem_OwnerId(barcode, of.getOwnerId())
                 .filter(pack -> !pack.getItem().getId().equals(self))
                 .map(pack -> pack.getUom().getUomCode() + " of item " + pack.getItem().getItemId());
     }

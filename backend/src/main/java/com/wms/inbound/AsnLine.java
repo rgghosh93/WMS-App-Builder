@@ -3,6 +3,7 @@ package com.wms.inbound;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.item.Item;
 
 import jakarta.persistence.Column;
@@ -16,7 +17,7 @@ import jakarta.persistence.Table;
 /** One expected item on an ASN, in eaches, and how much of it has come. */
 @Entity
 @Table(name = "asn_lines")
-public class AsnLine {
+public class AsnLine extends FacilityRecord {
 
     @Id
     private UUID id;

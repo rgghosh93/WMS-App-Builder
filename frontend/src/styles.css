@@ -83,6 +83,30 @@ button {
   color: var(--accent);
 }
 
+.topbar__facility {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: 12px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.topbar__facility span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__facility select {
+  max-width: 240px;
+  min-width: 0;
+  padding: 4px 6px;
+}
+
 .topbar__menu {
   display: none;
   border: 0;
@@ -1649,6 +1673,7 @@ textarea:focus {
 }
 
 .timeline__item--cancelled::before,
+.timeline__item--undone::before,
 .timeline__item--closed-short::before {
   background: var(--text-faint);
 }
@@ -1988,6 +2013,14 @@ textarea:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+}
+
+.rf-bar__facility {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.2;
+  opacity: 0.8;
 }
 
 .rf-bar__button {

@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.FacilityRecord;
 import com.wms.users.AppUser;
 
 import jakarta.persistence.Column;
@@ -21,7 +22,7 @@ import jakarta.persistence.Version;
 /** What was said about a task: its priority, who is to do it, and who was just offered it. */
 @Entity
 @Table(name = "task_directions")
-public class TaskDirection {
+public class TaskDirection extends FacilityRecord {
 
     /** How long a task offered to someone isn't offered to anyone else. */
     static final Duration CLAIM = Duration.ofMinutes(10);

@@ -25,7 +25,7 @@ import com.wms.inventory.StockTransaction.Type;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.container.ContainerRepository;
 import com.wms.masterdata.item.Item;
-import com.wms.masterdata.item.ItemRepository;
+import com.wms.masterdata.item.ItemFinder;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.location.LocationRepository;
 import com.wms.putaway.StorageSpace;
@@ -42,7 +42,7 @@ public class HoldService {
     private final InventoryRepository inventory;
     private final ContainerRepository containers;
     private final LocationRepository locations;
-    private final ItemRepository items;
+    private final ItemFinder items;
     private final StockQueryService stock;
     private final StockReservations reservations;
     private final PlannedMoves moves;
@@ -50,7 +50,7 @@ public class HoldService {
     private final StockLedger ledger;
     private final ReasonService reasons;
 
-    HoldService(InventoryRepository inventory, ContainerRepository containers, LocationRepository locations, ItemRepository items,
+    HoldService(InventoryRepository inventory, ContainerRepository containers, LocationRepository locations, ItemFinder items,
                 StockQueryService stock, StockReservations reservations, PlannedMoves moves, StorageSpace space, StockLedger ledger, ReasonService reasons) {
         this.inventory = inventory;
         this.containers = containers;
@@ -64,8 +64,8 @@ public class HoldService {
         this.reasons = reasons;
     }
 
-    /** What to hold: one of an LPN, a location, an item, or a lot of an item. */
-    public record Scope(String lpnId, String locationId, String itemId, String lotNumber) {
+    /** What to hold: one of an LPN, a location, an item, or a lot of an item; and whose it is if several owners have one with this ID. */
+    public record Scope(String lpnId, String locationId, String itemId, String lotNumber, String owner) {
     }
 
     /** @param damaged damaged rather than on hold */
@@ -146,7 +146,7 @@ public class HoldService {
         if (itemCode == null) {
             throw invalid("scope", "Choose an LPN, a location, an item or a lot");
         }
-        Item item = items.findByItemId(itemCode).orElseThrow(() -> invalid("itemId", itemCode + " is not a known item"));
+        Item item = items.byId(itemCode, scope.owner(), "itemId");
         return lot == null ? inventory.findByItem_Id(item.getId()) : inventory.findByItem_IdAndLotNumber(item.getId(), lot);
     }
 

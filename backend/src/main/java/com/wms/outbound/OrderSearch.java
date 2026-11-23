@@ -3,6 +3,7 @@ package com.wms.outbound;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.springframework.data.jpa.domain.Specification;
 
@@ -13,8 +14,9 @@ import jakarta.persistence.criteria.Predicate;
  *
  * @param q      free text matched (contains, any case) against order number and customer
  * @param status exact status
+ * @param owner  exact owner (internal id)
  */
-public record OrderSearch(String q, OrderStatus status) {
+public record OrderSearch(String q, OrderStatus status, UUID owner) {
 
     Specification<OutboundOrder> toSpecification() {
         return (root, query, cb) -> {
@@ -27,6 +29,9 @@ public record OrderSearch(String q, OrderStatus status) {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (owner != null) {
+                predicates.add(cb.equal(root.get("ownerId"), owner));
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

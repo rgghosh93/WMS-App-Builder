@@ -21,6 +21,7 @@ import com.wms.common.api.ApiException;
 import com.wms.inbound.AsnEvent.Type;
 import com.wms.inbound.InboundViews.AsnDetail;
 import com.wms.inbound.InboundViews.ContainerTypeOption;
+import com.wms.inbound.InboundViews.ItemInfo;
 import com.wms.inbound.InboundViews.LineView;
 import com.wms.inbound.InboundViews.LocationRef;
 import com.wms.inbound.InboundViews.LpnCheck;
@@ -40,6 +41,7 @@ import com.wms.masterdata.container.ContainerType;
 import com.wms.masterdata.container.ContainerTypeRepository;
 import com.wms.masterdata.container.NewLpnCheck;
 import com.wms.masterdata.item.Item;
+import com.wms.masterdata.item.ItemFinder;
 import com.wms.masterdata.item.ItemScan;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.location.LocationRepository;
@@ -51,7 +53,7 @@ import jakarta.persistence.EntityManager;
 
 /**
  * Receiving an ASN at a receiving location or dock door, into LPNs: whole LPNs the vendor announced, or item by
- * item. Stock is on hand from here, but isn't allocated until it is put away in storage.
+ * item. A blind receipt, of what nobody announced, is received the same way: any item of its owner. Stock is on hand from here, but isn't allocated until it is put away in storage.
  */
 @Service
 @Transactional
@@ -74,11 +76,13 @@ public class ReceivingService {
     private final EntityManager em;
     private final List<ReceivedLpns> listeners;
     private final StockLedger ledger;
+    private final ItemFinder items;
 
     ReceivingService(AsnRepository asns, AsnReceiptRepository receipts, AsnEventRepository events, AsnService asnService,
                      InventoryRepository inventory, ContainerRepository containers, ContainerTypeRepository types,
                      LocationRepository locations, NewLpnCheck newLpns, AppUserRepository users, EntityManager em,
-                     List<ReceivedLpns> listeners, StockLedger ledger) {
+                     List<ReceivedLpns> listeners, StockLedger ledger, ItemFinder items) {
+        this.items = items;
         this.asns = asns;
         this.receipts = receipts;
         this.events = events;
@@ -146,6 +150,22 @@ public class ReceivingService {
                 container == null ? lpnTypes().stream().map(ContainerTypeOption::of).toList() : List.of());
     }
 
+    /** An item that can be received blind. */
+    @Transactional(readOnly = true)
+    public ItemInfo blindItem(UUID asnId, String scanned) {
+        Asn asn = asns.findById(asnId).orElseThrow(() -> ApiException.notFound("ASN not found"));
+        requireOpen(asn);
+        return ItemInfo.of(ofOwner(asn, scanned));
+    }
+
+    private Item ofOwner(Asn asn, String scanned) {
+        Item item = items.scanned(scanned, asn.getOwner().getCode(), "itemBarcode");
+        if (item.getStatus() != ActiveStatus.ACTIVE) {
+            throw invalid("itemBarcode", item.getItemId() + " is inactive");
+        }
+        return item;
+    }
+
     // ---------- Receiving ----------
 
     public AsnDetail receive(UUID userId, UUID asnId, Receive request) {
@@ -158,12 +178,13 @@ public class ReceivingService {
         String lpnId = requireLpn(request.lpnId());
 
         String scanned = Codes.normalize(request.itemBarcode());
-        List<AsnLine> lines = scanned == null ? List.of() : asn.getLines().stream()
+        Item blind = asn.isBlind() ? ofOwner(asn, scanned) : null;
+        List<AsnLine> lines = scanned == null || blind != null ? List.of() : asn.getLines().stream()
                 .filter(l -> ItemScan.of(l.getItem()).stream().anyMatch(s -> s.value().equalsIgnoreCase(scanned))).toList();
-        if (lines.isEmpty()) {
+        if (lines.isEmpty() && blind == null) {
             throw invalid("itemBarcode", scanned == null ? "Scan an item" : scanned + " is not on " + asn.getAsnNumber());
         }
-        Item item = lines.getFirst().getItem();
+        Item item = blind != null ? blind : lines.getFirst().getItem();
         ItemScan scan = ItemScan.of(item).stream().filter(s -> s.value().equalsIgnoreCase(scanned)).findFirst().orElseThrow();
         if (request.quantity() == null || request.quantity() < 1) {
             throw invalid("quantity", "Enter the quantity received");
@@ -183,7 +204,7 @@ public class ReceivingService {
                 .thenComparingInt(AsnLine::getLineNumber)).toList();
         int expected = bestFirst.stream().mapToInt(AsnLine::remaining).sum();
         int over = (int) eaches - expected;
-        if (over > 0 && !Boolean.TRUE.equals(request.allowOver())) {
+        if (over > 0 && blind == null && !Boolean.TRUE.equals(request.allowOver())) {
             throw ApiException.conflict("That is %d EA more of %s than %s says (%d EA left).".formatted(over, item.getItemId(),
                     asn.getAsnNumber(), expected), Map.of("over", String.valueOf(over)));
         }
@@ -199,7 +220,12 @@ public class ReceivingService {
             left -= take;
             serial = record(made, line, take, request.requestId(), container, location, lot, serials, serial, expiry, condition, user);
         }
-        if (left > 0) {
+        if (blind != null) {
+            AsnLine line = asn.lineFor(item, lot);
+            asns.flush();
+            record(made, line, left, request.requestId(), container, location, lot, serials, serial, expiry,
+                    condition, user);
+        } else if (left > 0) {
             record(made, bestFirst.getFirst(), left, request.requestId(), container, location, lot, serials, serial, expiry,
                     condition, user);
         }
@@ -207,7 +233,7 @@ public class ReceivingService {
         listeners.forEach(l -> l.received(container, location));
         finish(asn, "%s received %d EA of %s%s into %s at %s%s%s".formatted(user.getDisplayName(), eaches, item.getItemId(),
                 lot == null ? "" : " lot " + lot, lpnId, location.getLocationId(), note(condition),
-                over > 0 ? "; " + over + " EA over" : ""));
+                over > 0 && blind == null ? "; " + over + " EA over" : ""));
         return asnService.detail(asn);
     }
 
@@ -303,7 +329,7 @@ public class ReceivingService {
             throw ApiException.conflict("Nothing has been received on " + asn.getAsnNumber() + ". Cancel it instead.", Map.of());
         }
         int shortBy = asn.getLines().stream().mapToInt(AsnLine::remaining).sum();
-        int over = asn.getLines().stream().mapToInt(l -> Math.max(0, l.getReceivedQuantity() - l.getExpectedQuantity())).sum();
+        int over = asn.isBlind() ? 0 : asn.getLines().stream().mapToInt(l -> Math.max(0, l.getReceivedQuantity() - l.getExpectedQuantity())).sum();
         if (shortBy > 0 && !acceptShort) {
             throw ApiException.conflict(shortBy + " EA of " + asn.getAsnNumber() + " have not been received.",
                     Map.of("short", String.valueOf(shortBy)));
@@ -322,8 +348,9 @@ public class ReceivingService {
         }
         long received = asn.getLines().stream().mapToLong(AsnLine::getReceivedQuantity).sum();
         long expected = asn.getLines().stream().mapToLong(AsnLine::getExpectedQuantity).sum();
-        events.save(new AsnEvent(asn, Type.CLOSED, "%s closed it: %d of %d EA received%s%s".formatted(user.getDisplayName(),
-                received, expected, shortBy > 0 ? ", " + shortBy + " short" : "", over > 0 ? ", " + over + " over" : "")));
+        events.save(new AsnEvent(asn, Type.CLOSED, asn.isBlind() ? "%s closed it: %d EA received".formatted(user.getDisplayName(), received)
+                : "%s closed it: %d of %d EA received%s%s".formatted(user.getDisplayName(), received, expected,
+                        shortBy > 0 ? ", " + shortBy + " short" : "", over > 0 ? ", " + over + " over" : "")));
         asns.flush();
         return asnService.detail(asn);
     }
@@ -382,6 +409,11 @@ public class ReceivingService {
 
     /** The container for an LPN if it exists and can be received into; null if it is new. Throws if it can't be used. */
     private Container usable(Asn asn, Location location, String lpnId) {
+        if (asn.isBlind()) {
+            asns.findAnnouncing(lpnId).stream().findFirst().ifPresent(other -> {
+                throw invalid("lpnId", lpnId + " is announced on " + other.getAsnNumber() + ". Receive it there");
+            });
+        }
         Container container = containers.findByLpnId(lpnId).orElse(null);
         if (container == null) {
             newLpns.problemWith(lpnId).ifPresent(problem -> {

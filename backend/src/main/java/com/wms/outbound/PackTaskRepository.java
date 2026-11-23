@@ -1,5 +1,6 @@
 package com.wms.outbound;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,17 +24,20 @@ public interface PackTaskRepository extends JpaRepository<PackTask, UUID>, JpaSp
     List<PackTask> findByOrderId(UUID orderId);
 
     /** The unfinished task for a container, if it is waiting to be packed. */
-    @Query("select t from PackTask t where t.container.id = :containerId and t.status <> com.wms.outbound.PackTaskStatus.COMPLETED")
+    @Query("select t from PackTask t where t.container.id = :containerId and t.status in "
+            + "(com.wms.outbound.PackTaskStatus.OPEN, com.wms.outbound.PackTaskStatus.IN_PROGRESS)")
     Optional<PackTask> findOpenByContainer(UUID containerId);
 
-    @Query("select t from PackTask t where t.station.id = :stationId and t.status <> com.wms.outbound.PackTaskStatus.COMPLETED")
+    @Query("select t from PackTask t where t.station.id = :stationId and t.status in "
+            + "(com.wms.outbound.PackTaskStatus.OPEN, com.wms.outbound.PackTaskStatus.IN_PROGRESS)")
     List<PackTask> findOpenByStation(UUID stationId);
 
     @EntityGraph(attributePaths = {"container", "station", "assignedTo"})
-    List<PackTask> findByStatusNot(PackTaskStatus status);
+    List<PackTask> findByStatusIn(Collection<PackTaskStatus> statuses);
 
     /** Unfinished tasks per station: rows of (station id, count). */
-    @Query("select t.station.id, count(t) from PackTask t where t.status <> com.wms.outbound.PackTaskStatus.COMPLETED group by t.station.id")
+    @Query("select t.station.id, count(t) from PackTask t where t.status in "
+            + "(com.wms.outbound.PackTaskStatus.OPEN, com.wms.outbound.PackTaskStatus.IN_PROGRESS) group by t.station.id")
     List<Object[]> countOpenByStation();
 
     @Query(value = "select nextval('pack_task_number_seq')", nativeQuery = true)

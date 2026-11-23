@@ -3,6 +3,7 @@ package com.wms.replenishment;
 import java.util.UUID;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.zone.Zone;
@@ -21,7 +22,7 @@ import jakarta.persistence.Version;
 /** Keeps an item stocked in a pick location: below the minimum, it is filled to the maximum. */
 @Entity
 @Table(name = "replenishment_rules")
-public class ReplenishmentRule {
+public class ReplenishmentRule extends FacilityRecord {
 
     @Id
     private UUID id;

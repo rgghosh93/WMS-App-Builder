@@ -3,6 +3,7 @@ package com.wms.putaway;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryRecord;
 import com.wms.inventory.InventoryStatus;
 import com.wms.masterdata.item.Item;
@@ -20,7 +21,7 @@ import jakarta.persistence.Table;
 /** Something that was put away, kept after the stock has moved on. */
 @Entity
 @Table(name = "putaway_task_lines")
-public class PutawayTaskLine {
+public class PutawayTaskLine extends FacilityRecord {
 
     @Id
     private UUID id;

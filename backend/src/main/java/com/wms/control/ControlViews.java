@@ -19,10 +19,11 @@ public final class ControlViews {
     private ControlViews() {
     }
 
-    public record ItemRef(UUID id, String itemId, String description, boolean lotControlled, boolean serialControlled,
+    /** @param owner code of whose it is */
+    public record ItemRef(UUID id, String owner, String itemId, String description, boolean lotControlled, boolean serialControlled,
                           boolean expiryControlled) {
         static ItemRef of(Item i) {
-            return new ItemRef(i.getId(), i.getItemId(), i.getDescription(), i.isLotControlled(), i.isSerialControlled(),
+            return new ItemRef(i.getId(), i.getOwner() == null ? null : i.getOwner().getCode(), i.getItemId(), i.getDescription(), i.isLotControlled(), i.isSerialControlled(),
                     i.isExpiryControlled());
         }
     }
@@ -56,15 +57,20 @@ public final class ControlViews {
                          long expired, long elsewhere) {
     }
 
-    public record ItemOnHand(ItemRef item, OnHand total, List<OnHand> lots) {
+    /** In one facility, when looking at all of them. */
+    public record AtFacility(String facility, OnHand total) {
     }
 
-    public record TransactionView(UUID id, long number, Instant occurredAt, StockTransaction.Type type, UUID itemId, String itemCode,
+    /** @param facilities only when looking at all of them */
+    public record ItemOnHand(ItemRef item, OnHand total, List<OnHand> lots, List<AtFacility> facilities) {
+    }
+
+    public record TransactionView(UUID id, long number, Instant occurredAt, StockTransaction.Type type, UUID itemId, String owner, String itemCode,
                                   String lotNumber, String serialNumber, LocalDate expiryDate, int quantity, String fromLocation,
                                   String fromLpn, String toLocation, String toLpn, InventoryStatus fromStatus,
                                   InventoryStatus toStatus, String reference, String reason, String userName) {
         static TransactionView of(StockTransaction t) {
-            return new TransactionView(t.getId(), t.getNumber(), t.getOccurredAt(), t.getType(), t.getItemId(), t.getItemCode(),
+            return new TransactionView(t.getId(), t.getNumber(), t.getOccurredAt(), t.getType(), t.getItemId(), t.getOwnerCode(), t.getItemCode(),
                     t.getLotNumber(), t.getSerialNumber(), t.getExpiryDate(), t.getQuantity(), t.getFromLocation(), t.getFromLpn(),
                     t.getToLocation(), t.getToLpn(), t.getFromStatus(), t.getToStatus(), t.getReference(), t.getReason(), t.getUserName());
         }
@@ -84,10 +90,25 @@ public final class ControlViews {
     /**
      * What a scanned label to move from is.
      *
-     * @param lpn   set for an LPN, which is moved whole
-     * @param lines what is in the LPN, or lies loose at the location
+     * @param lpn      set for an LPN
+     * @param whole    whether the LPN can be moved as it is
+     * @param byItem   whether what is in the LPN can be taken out of it, item by item: only at a pack station
+     * @param whyStays why the LPN can't be moved as it is, or null
+     * @param lines    what is in the LPN, or lies loose at the location
+     * @param lpns     LPNs at the pack station with something to put back
      */
-    public record MoveSource(String lpn, String containerType, String location, List<MovableLine> lines) {
+    public record MoveSource(String lpn, String containerType, String location, boolean whole, boolean byItem, String whyStays,
+                             List<MovableLine> lines, List<PutBack> lpns) {
+    }
+
+    /**
+     * Stock at a pack station that no order has any more, such as what was picked for an order since cancelled, or missing
+     * at packing and found again.
+     *
+     * @param lpn  the LPN it is in; null if it lies loose
+     * @param held how much of it is on hold or damaged
+     */
+    public record PutBack(String location, String lpn, List<String> items, int quantity, int held) {
     }
 
     public record MoveResult(String message) {

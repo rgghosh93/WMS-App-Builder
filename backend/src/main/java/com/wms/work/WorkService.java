@@ -231,6 +231,11 @@ public class WorkService {
         private final TaskDirectionRepository directions;
         private final List<WorkSource> sources;
 
+        @Override
+        public boolean halfDone() {
+            return false;
+        }
+
         Assigned(TaskDirectionRepository directions, List<WorkSource> sources) {
             this.directions = directions;
             this.sources = sources;

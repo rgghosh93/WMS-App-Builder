@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.wms.common.ActiveStatus;
 import com.wms.common.Codes;
 import com.wms.common.api.ApiException;
+import com.wms.facility.Facility;
+import com.wms.facility.FacilityRepository;
 
 /** Who can sign in, how, and with which roles. */
 @Service
@@ -31,14 +33,16 @@ public class UserService {
     private final PinHasher hasher;
     private final RoleRepository roles;
     private final List<UserWork> work;
+    private final FacilityRepository facilities;
 
     UserService(AppUserRepository users, DeviceSessionRepository sessions, PinHasher hasher, RoleRepository roles,
-                List<UserWork> work) {
+                List<UserWork> work, FacilityRepository facilities) {
         this.users = users;
         this.sessions = sessions;
         this.hasher = hasher;
         this.roles = roles;
         this.work = work;
+        this.facilities = facilities;
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +71,7 @@ public class UserService {
         }
         user.setStatus(request.status());
         user.setRoles(checkedRoles(request.roleIds()));
+        user.setFacilities(checkedFacilities(request.facilityIds()));
         return view(users.saveAndFlush(user));
     }
 
@@ -86,6 +91,9 @@ public class UserService {
         user.setStatus(request.status());
         if (request.roleIds() != null) {
             user.setRoles(checkedRoles(request.roleIds()));
+        }
+        if (request.facilityIds() != null) {
+            user.setFacilities(checkedFacilities(request.facilityIds()));
         }
         users.flush();
         keepAnAdministrator(managed);
@@ -154,6 +162,14 @@ public class UserService {
         List<Role> found = ids == null ? List.of() : roles.findAllById(ids);
         if (ids != null && found.size() != ids.size()) {
             throw ApiException.invalid("A role no longer exists. Reload and try again.", Map.of("roleIds", "role not found"));
+        }
+        return found;
+    }
+
+    private Collection<Facility> checkedFacilities(Set<UUID> ids) {
+        List<Facility> found = ids == null ? List.of() : facilities.findAllById(ids);
+        if (ids != null && found.size() != ids.size()) {
+            throw ApiException.invalid("A facility no longer exists. Reload and try again.", Map.of("facilityIds", "facility not found"));
         }
         return found;
     }

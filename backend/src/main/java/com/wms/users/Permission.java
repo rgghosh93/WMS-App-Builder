@@ -12,6 +12,7 @@ public enum Permission {
     SHIPPING(Group.DESKTOP, "Prepare shipments", "Addresses, carrier services and tracking numbers"),
     INVENTORY(Group.DESKTOP, "Control inventory", "Adjust and hold stock, and plan counts; larger changes wait for approval"),
     INVENTORY_APPROVE(Group.DESKTOP, "Approve inventory changes", "Other people's larger adjustments and count differences, the limit, and reason codes"),
+    FACILITIES(Group.DESKTOP, "Manage facilities", "Add and change them; what is in them is up to the other permissions"),
     USERS(Group.DESKTOP, "Manage users and roles", "Can give anyone any permission, themselves included"),
     DEVICE_NEXT(Group.DEVICE, "Get the next task", "Offered the most urgent task nearby, of the kinds they may do"),
     DEVICE_RECEIVE(Group.DEVICE, "Receive", ""),

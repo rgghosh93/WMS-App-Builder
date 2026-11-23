@@ -458,13 +458,31 @@ class PickingTest {
         JsonNode state = body(start(ann, "T1").andExpect(jsonPath("$.task.orderCount").value(2)));
         state = body(confirm(ann, state, "111000", 2, false).andExpect(jsonPath("$.pick.orderNumber").value("SO-B")));
 
-        // SO-A is partly in the tote, so only SO-B can be cancelled; that leaves the task ready to drop.
-        call(post("/api/orders/" + a + "/cancel"), ann).andExpect(status().isConflict())
-                .andExpect(jsonPath("$.detail", containsString("already been picked")));
+        // SO-A is in the tote already, so without SO-B the task is ready to drop.
         call(post("/api/orders/" + b + "/cancel"), ann).andExpect(jsonPath("$.status").value("CANCELLED"));
         call(get("/api/rf/picking"), ann).andExpect(jsonPath("$.step").value("DROP"));
         confirm(ann, state, "111000", 3, false).andExpect(status().isConflict());
         drop(ann, "DC1-PACK-02").andExpect(jsonPath("$.step").value("SCAN_CONTAINER"));
+        call(get("/api/pack-tasks"), ann).andExpect(jsonPath("$.content[0].orders", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].orders[0].orderNumber").value("SO-A"));
+    }
+
+    @Test
+    void anOrderCancelledWhilePickedStillHasToBeDropped() throws Exception {
+        String orderId = order("SO-1", 5, line("SKU-BAR", 10));
+        JsonNode state = body(start(ann, "T1"));
+        confirm(ann, state, "111000", 4, false);
+        call(post("/api/orders/" + orderId + "/cancel"), ann).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.lines[0].pickedQuantity").value(0))
+                .andExpect(jsonPath("$.allocations", hasSize(0)))
+                .andExpect(jsonPath("$.events[*].message", hasItem(containsString("To move back to storage: 4 EA in T1"))));
+        call(get("/api/rf/picking"), ann).andExpect(jsonPath("$.step").value("DROP"));
+        drop(ann, "DC1-PACK-01").andExpect(jsonPath("$.step").value("SCAN_CONTAINER"));
+        // Nothing in it is to be packed.
+        call(get("/api/pack-tasks"), ann).andExpect(jsonPath("$.totalElements").value(0));
+        call(get("/api/rf/moves/put-back"), ann).andExpect(jsonPath("$[0].lpn").value("T1")).andExpect(jsonPath("$[0].quantity").value(4));
+        assertThat(container("T1").getStatus()).isEqualTo(ContainerStatus.IN_USE);
     }
 
     @Test

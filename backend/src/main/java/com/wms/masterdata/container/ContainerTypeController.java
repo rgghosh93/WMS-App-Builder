@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.wms.common.ActiveStatus;
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.facility.Site;
 import com.wms.users.Permission;
 import com.wms.users.Requires;
 
@@ -85,6 +86,10 @@ public class ContainerTypeController {
     @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
-        service.delete(id);
+        // It may be in use in any facility.
+        Site.everywhere(() -> {
+            service.delete(id);
+            return null;
+        });
     }
 }

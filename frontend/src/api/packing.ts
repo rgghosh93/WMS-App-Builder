@@ -3,13 +3,14 @@ import type { WeightUom } from './measure';
 import type { ItemRef, OrderRef } from './orders';
 import type { ContainerTypeOption, ItemScan } from './rf';
 
-export type PackTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
-export type CartonStatus = 'OPEN' | 'CLOSED';
+export type PackTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type CartonStatus = 'OPEN' | 'CLOSED' | 'CANCELLED';
 
 export const PACK_STATUSES: { value: PackTaskStatus; label: string }[] = [
   { value: 'OPEN', label: 'Waiting' },
   { value: 'IN_PROGRESS', label: 'Packing' },
   { value: 'COMPLETED', label: 'Packed' },
+  { value: 'CANCELLED', label: 'Called off' },
 ];
 
 export function packStatusLabel(status: PackTaskStatus): string {
@@ -35,6 +36,8 @@ export interface PackDetail {
   packedQuantity: number;
   /** Reported missing at packing. */
   shortQuantity: number;
+  /** Not to be packed any more, as the order was cancelled or undone. */
+  cancelledQuantity: number;
   remaining: number;
   itemScans: ItemScan[];
 }

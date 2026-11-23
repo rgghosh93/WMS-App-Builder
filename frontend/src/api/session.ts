@@ -1,3 +1,4 @@
+import type { FacilityRef } from './facilities';
 import { request } from './http';
 
 export type Permission =
@@ -11,6 +12,7 @@ export type Permission =
   | 'SHIPPING'
   | 'INVENTORY'
   | 'INVENTORY_APPROVE'
+  | 'FACILITIES'
   | 'USERS'
   | 'DEVICE_NEXT'
   | 'DEVICE_RECEIVE'
@@ -30,6 +32,10 @@ export interface DesktopUser {
   permissions: Permission[];
   /** Someone else set their password, so they have to choose their own first. */
   mustChangePassword: boolean;
+  /** Where they are working. */
+  facility?: FacilityRef;
+  /** Everywhere they may. */
+  facilities?: FacilityRef[];
 }
 
 export interface SessionView {
@@ -53,6 +59,11 @@ export function setUpAdministrator(userCode: string, displayName: string, passwo
 
 export function changePassword(currentPassword: string, newPassword: string): Promise<DesktopUser> {
   return request('/api/session/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+}
+
+/** Goes on working in another facility. */
+export function goToFacility(facilityId: string): Promise<DesktopUser> {
+  return request('/api/session/facility', { method: 'PUT', body: JSON.stringify({ facilityId }) });
 }
 
 export function signOutOfDesktop(): Promise<void> {

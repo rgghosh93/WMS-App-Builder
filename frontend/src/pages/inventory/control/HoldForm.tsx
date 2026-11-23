@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { placeHold, previewHold, type HoldResult, type HoldScope } from '../../../api/control';
 import { Drawer } from '../../../components/Drawer';
+import { OwnerSelect } from '../../../components/OwnerSelect';
 import { Field } from '../../../components/Field';
 import { ReasonFields } from './ReasonFields';
 import { useSubmit } from './useSubmit';
@@ -19,6 +20,7 @@ export function HoldForm({ onClose, onDone }: { onClose: () => void; onDone: (re
   const [kind, setKind] = useState<Kind>('lpnId');
   const [code, setCode] = useState('');
   const [lot, setLot] = useState('');
+  const [owner, setOwner] = useState('');
   const [damaged, setDamaged] = useState(false);
   const [reasonId, setReasonId] = useState('');
   const [note, setNote] = useState('');
@@ -26,7 +28,10 @@ export function HoldForm({ onClose, onDone }: { onClose: () => void; onDone: (re
   const { errors, formError, saving, submit } = useSubmit();
 
   const label = KINDS.find((k) => k.value === kind)!.field;
-  const scope: HoldScope = kind === 'lot' ? { itemId: code.trim(), lotNumber: lot.trim() } : { [kind]: code.trim() };
+  const scope: HoldScope = {
+    ...(kind === 'lot' ? { itemId: code.trim(), lotNumber: lot.trim() } : { [kind]: code.trim() }),
+    ...(owner && (kind === 'lot' || kind === 'itemId') ? { owner } : {}),
+  };
   const error = errors.lpnId ?? errors.locationId ?? errors.itemId;
 
   const send = (event: FormEvent) => {
@@ -88,6 +93,9 @@ export function HoldForm({ onClose, onDone }: { onClose: () => void; onDone: (re
             onChange={(e) => changed(() => setCode(e.target.value.toUpperCase()))}
           />
         </Field>
+        {(kind === 'lot' || kind === 'itemId') && (
+          <OwnerSelect id="hold-owner" value={owner} onChange={(code) => changed(() => setOwner(code))} error={errors.owner} none="Whoever has it" />
+        )}
         {kind === 'lot' && (
           <Field id="hold-lot" label="Lot" error={errors.lotNumber}>
             <input id="hold-lot" className="input--code" value={lot} maxLength={40} autoComplete="off" onChange={(e) => changed(() => setLot(e.target.value.toUpperCase()))} />

@@ -3,6 +3,7 @@ package com.wms.outbound;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
@@ -27,7 +28,7 @@ import jakarta.persistence.Version;
  */
 @Entity
 @Table(name = "pick_task_details")
-public class PickTaskDetail {
+public class PickTaskDetail extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -137,6 +138,13 @@ public class PickTaskDetail {
     void cancel() {
         status = PickDetailStatus.CANCELLED;
         allocation = null;
+    }
+
+    /** What was picked isn't wanted any more; it stays in the container it was picked into until someone puts it away. */
+    void undo() {
+        status = PickDetailStatus.CANCELLED;
+        allocation = null;
+        pickedAllocation = null;
     }
 
     public int remaining() {

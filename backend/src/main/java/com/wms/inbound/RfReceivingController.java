@@ -9,10 +9,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.inbound.InboundViews.AsnDetail;
 import com.wms.inbound.InboundViews.AsnSummary;
+import com.wms.inbound.InboundViews.ItemInfo;
 import com.wms.inbound.InboundViews.LocationRef;
 import com.wms.inbound.InboundViews.LpnCheck;
 import com.wms.users.DeviceUser;
@@ -56,8 +58,30 @@ public class RfReceivingController {
     }
 
     @GetMapping("/asns/{asnNumber}")
-    public AsnDetail asn(@PathVariable String asnNumber) {
-        return asns.getByNumber(asnNumber);
+    public AsnDetail asn(@PathVariable String asnNumber, @RequestParam(required = false) String owner) {
+        return asns.getByNumber(asnNumber, owner);
+    }
+
+    /** @param requestId made by the device; it becomes the ID of the receipt, so sending it again starts nothing more */
+    public record BlindRequest(UUID requestId, String owner, String vendorName, String reference) {
+    }
+
+    /** Starts receiving what nobody announced. From there on it is received like an ASN. */
+    @PostMapping("/blind")
+    public AsnDetail startBlind(@RequestAttribute(DeviceUser.ATTRIBUTE) DeviceUser user, @RequestBody BlindRequest request) {
+        return asns.startBlind(request.requestId(), request.owner(), request.vendorName(), request.reference(), user.displayName());
+    }
+
+    /** Gives up on a blind receipt with nothing received. */
+    @PostMapping("/blind/{id}/discard")
+    public AsnDetail discardBlind(@PathVariable UUID id) {
+        return asns.discardBlind(id);
+    }
+
+    /** An item to receive blind. */
+    @GetMapping("/blind/{id}/items/{code}")
+    public ItemInfo blindItem(@PathVariable UUID id, @PathVariable String code) {
+        return receiving.blindItem(id, code);
     }
 
     @PostMapping("/asns/{id}/lpn")

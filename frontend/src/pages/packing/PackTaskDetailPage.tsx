@@ -126,7 +126,7 @@ export function PackTaskDetailPage() {
         )}
         {task.completedAt && (
           <div>
-            <dt>Packed at</dt>
+            <dt>{task.status === 'CANCELLED' ? 'Called off' : 'Packed at'}</dt>
             <dd>{formatDateTime(task.completedAt)}</dd>
           </div>
         )}
@@ -170,7 +170,10 @@ export function PackTaskDetailPage() {
                   </td>
                   <td className="code">{d.serialNumber ?? d.lotNumber ?? <span className="muted">—</span>}</td>
                   <td className="num">{d.quantity.toLocaleString()} EA</td>
-                  <td className="num">{d.packedQuantity.toLocaleString()} EA</td>
+                  <td className="num">
+                    {d.packedQuantity.toLocaleString()} EA
+                    {d.cancelledQuantity > 0 && <span className="muted cell__sub">{d.cancelledQuantity.toLocaleString()} called off</span>}
+                  </td>
                   <td className="num">{d.shortQuantity > 0 ? `${d.shortQuantity} EA` : <span className="muted">—</span>}</td>
                 </tr>
               ))}

@@ -15,8 +15,8 @@ export function CartonCard({ carton, showOrder = false, linked = false }: { cart
         ) : (
           <span className="code carton__lpn">{carton.container.lpnId}</span>
         )}
-        <span className={`badge badge--task-${carton.status === 'OPEN' ? 'in-progress' : 'completed'}`}>
-          {carton.status === 'OPEN' ? 'Open' : 'Closed'}
+        <span className={`badge badge--task-${carton.status === 'OPEN' ? 'in-progress' : carton.status === 'CLOSED' ? 'completed' : 'cancelled'}`}>
+          {carton.status === 'OPEN' ? 'Open' : carton.status === 'CLOSED' ? 'Closed' : 'Called off'}
         </span>
         <span className="muted">
           {carton.containerType} · {carton.totalQuantity.toLocaleString()} EA
@@ -39,6 +39,7 @@ export function CartonCard({ carton, showOrder = false, linked = false }: { cart
           ))}
         </ul>
       )}
+      {carton.status === 'CANCELLED' && <p className="muted">The order was cancelled or undone. What was packed goes back to storage.</p>}
       {carton.closedBy && <p className="muted carton__by">Packed by {carton.closedBy}</p>}
     </section>
   );

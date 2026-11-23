@@ -9,13 +9,17 @@ import java.util.UUID;
 import com.wms.common.ActiveStatus;
 import com.wms.common.measure.DimensionUom;
 import com.wms.common.measure.WeightUom;
+import com.wms.masterdata.owner.Owner;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
@@ -30,6 +34,14 @@ public class Item {
 
     @Id
     private UUID id;
+
+    /** Whose it is. Set when it is made, and never changed. */
+    @Column(name = "owner_id", nullable = false, updatable = false)
+    private UUID ownerId = Owner.FIRST;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", insertable = false, updatable = false)
+    private Owner owner;
 
     @Column(name = "item_id", nullable = false, length = 40)
     private String itemId;
@@ -113,6 +125,14 @@ public class Item {
     /** Marks the item as changed, e.g. when only its packaging changed, so its version moves on. */
     void touch() {
         updatedAt = Instant.now();
+    }
+
+    public Owner getOwner() { return owner; }
+    public UUID getOwnerId() { return ownerId; }
+
+    public void setOwner(Owner owner) {
+        this.owner = owner;
+        this.ownerId = owner.getId();
     }
 
     public UUID getId() { return id; }

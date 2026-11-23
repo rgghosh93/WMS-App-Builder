@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryStatus;
 import com.wms.masterdata.item.Item;
 
@@ -21,7 +22,7 @@ import jakarta.persistence.Version;
 /** A correction of how much stock there is, made or waiting for approval. */
 @Entity
 @Table(name = "inventory_adjustments")
-public class Adjustment {
+public class Adjustment extends FacilityRecord {
 
     public enum Status { PENDING, APPLIED, REJECTED }
 

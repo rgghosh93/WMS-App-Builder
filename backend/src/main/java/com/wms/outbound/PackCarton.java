@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.wms.common.measure.WeightUom;
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.users.AppUser;
 
@@ -26,7 +27,7 @@ import jakarta.persistence.Table;
 /** A shipping carton packed for one order, and what is in it. */
 @Entity
 @Table(name = "pack_cartons")
-public class PackCarton {
+public class PackCarton extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -109,6 +110,14 @@ public class PackCarton {
         this.status = CartonStatus.CLOSED;
         this.closedAt = Instant.now();
         this.closedBy = user;
+    }
+
+    /** Its order was cancelled or undone. What is in it stays there until someone puts it away. */
+    void cancel() {
+        status = CartonStatus.CANCELLED;
+        shipment = null;
+        trackingNumber = null;
+        lines.forEach(PackCartonLine::clearAllocation);
     }
 
     boolean isLoaded() {

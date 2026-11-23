@@ -241,7 +241,6 @@ class PackingTest {
         // Packed stock is spoken for.
         String other = order("SO-2", line("SKU-BAR", 50));
         call(get("/api/orders/" + other), null).andExpect(jsonPath("$.lines[0].allocatedQuantity").value(38));
-        call(post("/api/orders/" + orderId + "/cancel"), null).andExpect(status().isConflict());
     }
 
     @Test
@@ -436,7 +435,159 @@ class PackingTest {
                 .andExpect(jsonPath("$.detail", containsString("on hold")));
     }
 
+    // ---------- Cancelling and undoing ----------
+
+    @Test
+    void anOrderWaitingToBePackedCanBeCancelledAndPutBack() throws Exception {
+        String orderId = order("SO-1", line("SKU-BAR", 12));
+        pickAndDrop("T1", STATION);
+        move("T1").andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail", containsString("reserved")));
+        call(post("/api/orders/" + orderId + "/cancel"), null)
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.packTasks[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$.events[*].message", hasItem(containsString("To move back to storage: 12 EA in T1 at " + STATION))));
+        call(get("/api/pack-tasks/stations"), null).andExpect(jsonPath("$[0].waitingTasks").value(0));
+        start(ann, STATION, "T1").andExpect(status().isBadRequest());
+        // It can't be had by another order before it is back.
+        String other = order("SO-2", line("SKU-BAR", 50));
+        call(get("/api/orders/" + other), null).andExpect(jsonPath("$.lines[0].allocatedQuantity").value(38));
+
+        JsonNode source = body(move("T1").andExpect(jsonPath("$.whole").value(true)).andExpect(jsonPath("$.byItem").value(true))
+                .andExpect(jsonPath("$.lines", hasSize(2))));
+        for (JsonNode l : source.get("lines")) {
+            takeOut(l, l.get("free").asInt()).andExpect(status().isOk());
+        }
+        assertThat(container("T1").getStatus()).isEqualTo(ContainerStatus.AVAILABLE);
+        call(get("/api/rf/moves/put-back"), ann).andExpect(jsonPath("$", hasSize(0)));
+        call(post("/api/orders/" + other + "/allocate"), null).andExpect(jsonPath("$.status").value("ALLOCATED"));
+    }
+
+    @Test
+    void anUndoneOrderGoesBackToNewAndCanBePickedAgain() throws Exception {
+        String orderId = order("SO-1", line("SKU-BAR", 12), line("SKU-DRILL", 1));
+        pickAndDrop("T1", STATION);
+        call(post("/api/orders/" + orderId + "/undo"), null)
+                .andExpect(jsonPath("$.status").value("NEW"))
+                .andExpect(jsonPath("$.lines[*].status", everyItem(is("NEW"))))
+                .andExpect(jsonPath("$.lines[0].pickedQuantity").value(0))
+                .andExpect(jsonPath("$.allocations", hasSize(0)))
+                .andExpect(jsonPath("$.events[*].message", hasItem(containsString("Picking undone: released 13 EA"))));
+        call(post("/api/orders/" + orderId + "/undo"), null).andExpect(status().isConflict());
+        call(json(post("/api/rf/moves/lpn"), Map.of("lpnId", "T1", "toLocationId", "DC1-BK-01-01-A-01", "allowOver", true)), ann).andExpect(status().isOk());
+
+        call(post("/api/orders/" + orderId + "/allocate"), null).andExpect(jsonPath("$.status").value("ALLOCATED"));
+        pickAndDrop("T2", STATION);
+        JsonNode task = body(start(ann, STATION, "T2").andExpect(jsonPath("$.totalQuantity").value(13)));
+        assertThat(task.get("details")).hasSize(3);
+        // Undone once more: what was undone before stays undone.
+        call(post("/api/orders/" + orderId + "/undo"), null).andExpect(jsonPath("$.status").value("NEW"))
+                .andExpect(jsonPath("$.packTasks[*].status", everyItem(is("CANCELLED"))));
+        pack(ann, task, 0, "111000", 1).andExpect(status().isConflict()).andExpect(jsonPath("$.detail", containsString("called off")));
+    }
+
+    @Test
+    void anOrderOnlyAllocatedCanBeUndone() throws Exception {
+        String orderId = order("SO-1", line("SKU-BAR", 12));
+        call(post("/api/orders/" + orderId + "/undo"), null).andExpect(jsonPath("$.status").value("NEW"))
+                .andExpect(jsonPath("$.tasks[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$.events[*].message", hasItem(containsString("Allocation undone: released 12 EA and cancelled 2 details"))));
+        call(get("/api/rf/moves/put-back"), ann).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void cancellingOneOrderOfABatchLeavesTheOtherToPack() throws Exception {
+        UUID a = received("SO-A", line("SKU-BAR", 4));
+        UUID b = received("SO-B", line("SKU-BAR", 3));
+        orderService.allocateBatch(List.of(a, b));
+        pickAndDrop("T1", STATION);
+        JsonNode task = body(start(ann, STATION, "T1"));
+        task = body(carton(ann, task, 0, "BOX-A"));
+        task = body(pack(ann, task, 0, "111000", 1, null, null));
+        JsonNode before = task;
+        call(post("/api/orders/" + a + "/cancel"), null).andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.packTasks[0].status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.packTasks[0].cartons[0].status").value("CANCELLED"));
+        // The station showed the order still; its next scan is refused.
+        pack(ann, before, 0, "111000", 1, null, null).andExpect(status().isConflict());
+        close(ann, before, 0, null, null).andExpect(status().isConflict());
+        move("T1").andExpect(jsonPath("$.whole").value(false)).andExpect(jsonPath("$.whyStays", containsString("waiting to be packed")))
+                .andExpect(jsonPath("$.lines", hasSize(1))).andExpect(jsonPath("$.lines[0].free").value(3));
+
+        task = body(start(ann, STATION, "T1").andExpect(jsonPath("$.orders", hasSize(1))).andExpect(jsonPath("$.totalQuantity").value(3)));
+        task = body(carton(ann, task, 0, "BOX-B"));
+        int open = task.get("cartons").get(0).get("status").asString().equals("OPEN") ? 0 : 1;
+        task = body(pack(ann, task, open, "111000", 3, null, null));
+        close(ann, task, open, null, null).andExpect(jsonPath("$.status").value("COMPLETED"));
+        call(get("/api/orders/" + b), null).andExpect(jsonPath("$.status").value("PACKED"));
+        // The tote is kept until what is left in it is put back.
+        assertThat(container("T1").getStatus()).isEqualTo(ContainerStatus.IN_USE);
+        call(get("/api/rf/moves/put-back"), ann).andExpect(jsonPath("$[*].lpn", hasItem("T1"))).andExpect(jsonPath("$[*].lpn", hasItem("BOX-A")));
+        takeOut(body(move("T1")).get("lines").get(0), 3).andExpect(status().isOk());
+        takeOut(body(move("BOX-A")).get("lines").get(0), 1).andExpect(status().isOk());
+        assertThat(container("T1").getStatus()).isEqualTo(ContainerStatus.AVAILABLE);
+        assertThat(container("BOX-A").getStatus()).isEqualTo(ContainerStatus.RETIRED);
+        // Nor can what is packed for the other order be moved off.
+        move("BOX-B").andExpect(status().isBadRequest());
+        call(json(post("/api/rf/moves/lpn"), Map.of("lpnId", "BOX-B", "toLocationId", "DC1-BK-01-01-A-01", "allowOver", true)), ann)
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.detail", containsString("packed for SO-B")));
+    }
+
+    @Test
+    void whatAnotherOrderLeftInACartonDoesntShipWithIt() throws Exception {
+        UUID a = received("SO-A", line("SKU-BAR", 4));
+        UUID b = received("SO-B", line("SKU-BAR", 3));
+        orderService.allocateBatch(List.of(a, b));
+        pickAndDrop("OLPN-1", STATION);
+        call(post("/api/orders/" + a + "/cancel"), null).andExpect(status().isOk());
+        JsonNode task = body(start(ann, STATION, "OLPN-1").andExpect(jsonPath("$.orders", hasSize(1))).andExpect(jsonPath("$.canPackAsIs").value(false)));
+        asIs(ann, task, null, null).andExpect(status().isConflict());
+    }
+
+    @Test
+    void anEmptyCartonGoesWithItsOrder() throws Exception {
+        String orderId = order("SO-1", line("SKU-BAR", 2));
+        pickAndDrop("T1", STATION);
+        JsonNode task = body(start(ann, STATION, "T1"));
+        carton(ann, task, 0, "BOX-1").andExpect(status().isOk());
+        call(post("/api/orders/" + orderId + "/cancel"), null).andExpect(jsonPath("$.packTasks[0].cartons", hasSize(0)));
+        assertThat(containers.findByLpnId("BOX-1")).isEmpty();
+    }
+
+    // ---------- Moving stock off the station ----------
+
+    @Test
+    void stockMissingAtPackingCanBeMovedOffTheStationOnceFound() throws Exception {
+        order("SO-1", line("SKU-BAR", 10));
+        pickAndDrop("T1", STATION);
+        JsonNode task = body(start(ann, STATION, "T1"));
+        missing(ann, task, 0, 10).andExpect(status().isOk());
+        JsonNode source = body(move(STATION).andExpect(jsonPath("$.lines", hasSize(1))).andExpect(jsonPath("$.lines[0].status").value("ON_HOLD")));
+        // Held stock can be moved too, and stays held.
+        takeOut(source.get("lines").get(0), 4).andExpect(status().isOk());
+        String held = source.get("lines").get(0).get("inventoryId").asString();
+        call(json(post("/api/inventory/holds/release"), Map.of("inventoryIds", List.of(held), "reasonId", "00000000-0000-4000-8001-000000000008")), null)
+                .andExpect(status().isOk());
+        call(get("/api/rf/moves/put-back"), ann).andExpect(jsonPath("$[0].lpn").doesNotExist()).andExpect(jsonPath("$[0].quantity").value(6))
+                .andExpect(jsonPath("$[0].held").value(0));
+        takeOut(body(move(STATION)).get("lines").get(0), 6).andExpect(status().isOk());
+        move(STATION).andExpect(status().isBadRequest()).andExpect(jsonPath("$.detail").value("There is nothing to put back at " + STATION));
+        sync();
+        assertThat(inventory.findByLocation_IdIn(List.of(locations.findByLocationId("DC1-BK-01-01-A-02").orElseThrow().getId())).stream()
+                .filter(r -> "OLD".equals(r.getLotNumber())).map(r -> r.getStatus() + " " + r.getQuantity()))
+                .containsExactlyInAnyOrder("ON_HOLD 4", "AVAILABLE 6");
+        call(get("/api/inventory/history").param("type", "MOVE"), null).andExpect(jsonPath("$.content[0].fromLocation").value(STATION));
+    }
+
     // ---------- Helpers ----------
+
+    private ResultActions move(String scanned) throws Exception {
+        return call(get("/api/rf/moves/from/" + scanned), ann);
+    }
+
+    private ResultActions takeOut(JsonNode line, int quantity) throws Exception {
+        return call(json(post("/api/rf/moves/loose"), Map.of("requestId", UUID.randomUUID(), "inventoryId", line.get("inventoryId").asString(),
+                "quantity", quantity, "toLocationId", "DC1-BK-01-01-A-02", "allowOver", true)), ann);
+    }
 
     /** Picks the next waiting task into a container, scanning everything as directed, and drops it. */
     private void pickAndDrop(String lpn, String station) {
@@ -473,6 +624,11 @@ class PackingTest {
         body.put("serialNumber", serial);
         body.put("lotNumber", lot);
         return call(json(post(url(task, "pack")), body), user);
+    }
+
+    private ResultActions pack(Cookie user, JsonNode task, int packedSoFar, String barcode, int quantity) throws Exception {
+        return call(json(post(url(task, "pack")), Map.of("cartonId", UUID.randomUUID(), "packedSoFar", packedSoFar, "itemBarcode", barcode,
+                "quantity", quantity)), user);
     }
 
     private ResultActions close(Cookie user, JsonNode task, int carton, String weight, String uom) throws Exception {

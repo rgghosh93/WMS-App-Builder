@@ -34,6 +34,10 @@ public class DeviceSession {
     @Column(nullable = false, length = 10)
     private Kind kind;
 
+    /** Where they are working. */
+    @Column(name = "facility_id")
+    private UUID facilityId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -44,15 +48,18 @@ public class DeviceSession {
         // for JPA
     }
 
-    DeviceSession(AppUser user, Kind kind, String tokenHash, Instant createdAt, Instant expiresAt) {
+    DeviceSession(AppUser user, Kind kind, String tokenHash, UUID facilityId, Instant createdAt, Instant expiresAt) {
         this.id = UUID.randomUUID();
         this.user = user;
         this.kind = kind;
         this.tokenHash = tokenHash;
+        this.facilityId = facilityId;
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;
     }
 
+    UUID getFacilityId() { return facilityId; }
+    void setFacilityId(UUID id) { facilityId = id; }
     AppUser getUser() { return user; }
     Instant getExpiresAt() { return expiresAt; }
 }

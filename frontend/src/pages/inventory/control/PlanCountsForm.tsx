@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { planCounts, type CountPlan } from '../../../api/control';
 import { Drawer } from '../../../components/Drawer';
 import { Field } from '../../../components/Field';
+import { OwnerSelect } from '../../../components/OwnerSelect';
 import { ZoneSelect } from '../../../components/ZoneSelect';
 import { useSubmit } from './useSubmit';
 
@@ -14,6 +15,7 @@ export function PlanCountsForm({ onClose, onDone }: { onClose: () => void; onDon
   const [zone, setZone] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [code, setCode] = useState('');
+  const [owner, setOwner] = useState('');
   const [includeEmpty, setIncludeEmpty] = useState(false);
   const { errors, formError, saving, submit } = useSubmit();
 
@@ -33,7 +35,7 @@ export function PlanCountsForm({ onClose, onDone }: { onClose: () => void; onDon
           ? { area: area.trim(), zone: zone.trim(), includeEmpty }
           : kind === 'location'
             ? { locationId: code.trim() }
-            : { itemId: code.trim() };
+            : { itemId: code.trim(), ...(owner ? { owner } : {}) };
     void submit(found, async () => onDone(await planCounts(plan)));
   };
 
@@ -91,7 +93,10 @@ export function PlanCountsForm({ onClose, onDone }: { onClose: () => void; onDon
             </label>
           </>
         ) : (
-          input('plan-code', kind === 'location' ? 'Location' : 'Item', code, setCode, errors.locationId ?? errors.itemId)
+          <>
+            {input('plan-code', kind === 'location' ? 'Location' : 'Item', code, setCode, errors.locationId ?? errors.itemId)}
+            {kind === 'item' && <OwnerSelect id="plan-owner" value={owner} onChange={setOwner} error={errors.owner} none="Whoever has it" />}
+          </>
         )}
       </form>
     </Drawer>

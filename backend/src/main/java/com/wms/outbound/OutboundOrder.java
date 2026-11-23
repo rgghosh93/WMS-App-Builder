@@ -6,13 +6,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
+import com.wms.masterdata.owner.Owner;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
@@ -23,10 +29,18 @@ import jakarta.persistence.Version;
 /** A customer order to ship. */
 @Entity
 @Table(name = "outbound_orders")
-public class OutboundOrder {
+public class OutboundOrder extends FacilityRecord {
 
     @Id
     private UUID id;
+
+    /** Whose it is. Set when it is made, and never changed. */
+    @Column(name = "owner_id", nullable = false, updatable = false)
+    private UUID ownerId = Owner.FIRST;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", insertable = false, updatable = false)
+    private Owner owner;
 
     @Column(name = "order_number", nullable = false, length = 40)
     private String orderNumber;
@@ -117,6 +131,14 @@ public class OutboundOrder {
         return lines.stream().anyMatch(l -> l.getPickedQuantity() > 0);
     }
 
+    boolean anyShipped() {
+        return lines.stream().anyMatch(l -> l.getShippedQuantity() > 0);
+    }
+
+    boolean anyAllocated() {
+        return lines.stream().anyMatch(l -> l.getAllocatedQuantity() > 0);
+    }
+
     /** Whether any open line has something that isn't picked. */
     boolean hasUnpicked() {
         return lines.stream().anyMatch(l -> l.getStatus() != LineStatus.CANCELLED && l.getPickedQuantity() < l.neededQuantity());
@@ -125,6 +147,14 @@ public class OutboundOrder {
     /** Whether any open line still needs stock. */
     boolean needsStock() {
         return lines.stream().anyMatch(l -> l.getStatus() != LineStatus.CANCELLED && l.remaining() > 0);
+    }
+
+    public Owner getOwner() { return owner; }
+    public UUID getOwnerId() { return ownerId; }
+
+    public void setOwner(Owner owner) {
+        this.owner = owner;
+        this.ownerId = owner.getId();
     }
 
     public UUID getId() { return id; }

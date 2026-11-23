@@ -3,6 +3,7 @@ package com.wms.putaway;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.location.Location;
 import com.wms.users.AppUser;
 
@@ -19,7 +20,7 @@ import jakarta.persistence.Table;
 /** A location a task was sent to that couldn't be used. The task isn't sent there again. */
 @Entity
 @Table(name = "putaway_skips")
-public class PutawaySkip {
+public class PutawaySkip extends FacilityRecord {
 
     @Id
     private UUID id;

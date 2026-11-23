@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   checkLpn,
   closeAsn,
+  discardBlind,
   getOpenAsn,
   getReceivingLocation,
   listOpenAsns,
@@ -9,6 +10,7 @@ import {
   receiveItems,
   receiveWholeLpn,
   reverseReceipt,
+  startBlind,
   type AsnDetail,
   type AsnReceipt,
   type AsnSummary,
@@ -19,6 +21,7 @@ import {
 } from '../../api/asns';
 import { ApiError, errorMessage } from '../../api/http';
 import { inventoryStatusLabel } from '../../api/inventory';
+import { ownersAsked } from '../../api/owners';
 import { newRequestId } from '../../forms/requestId';
 import { formatDay } from '../outbound/OrdersPage';
 import { ReceiveItems, type ItemEntry } from './ReceiveItems';
@@ -33,7 +36,17 @@ type Pending =
 
 type Mode = 'receive' | 'undo' | 'close';
 
-/** Receiving an ASN: where, which ASN, then LPN by LPN, whole or item by item. */
+/** What nobody announced, before it is started. */
+interface Blind {
+  /** Kept while this is on the screen, so sending it again starts nothing more. */
+  requestId: string;
+  vendor: string;
+  reference: string;
+  /** Owners it could be for, when there are several. */
+  owners: string[];
+}
+
+/** Receiving an ASN, or what nobody announced: where, which, then LPN by LPN, whole or item by item. */
 export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void }) {
   const [locations, setLocations] = useState<ReceivingLocation[] | null>(null);
   const [location, setLocation] = useState<ReceivingLocation | null>(null);
@@ -44,6 +57,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
   /** The vendor's LPN is opened and counted instead of taken as announced. */
   const [byItem, setByItem] = useState(false);
   const [mode, setMode] = useState<Mode>('receive');
+  const [blind, setBlind] = useState<Blind | null>(null);
   const [undoing, setUndoing] = useState<AsnReceipt | null>(null);
   const [shortBy, setShortBy] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -70,6 +84,8 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
       });
     return () => controller.abort();
   }, [fail]);
+
+  const severalOwners = new Set(asns.map((a) => a.owner?.code)).size > 1;
 
   const leaveLpn = () => {
     setLpn(null);
@@ -111,7 +127,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
 
   const refresh = async (current: AsnDetail) => {
     try {
-      setAsn(await getOpenAsn(current.asnNumber));
+      setAsn(await getOpenAsn(current.asnNumber, current.owner?.code));
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) await leaveAsn();
     }
@@ -124,7 +140,24 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
       setLocation(found);
     });
 
-  const chooseAsn = (number: string) => run(async () => setAsn(await getOpenAsn(number)));
+  const chooseAsn = (number: string, owner?: string) => run(async () => setAsn(await getOpenAsn(number, owner)));
+
+  const beginBlind = async (owner: string | null) => {
+    const start = blind!;
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      setAsn(await startBlind({ requestId: start.requestId, owner, vendorName: start.vendor.trim(), reference: start.reference.trim() }));
+      setBlind(null);
+    } catch (e) {
+      const owners = e instanceof ApiError ? ownersAsked(e.fieldErrors) : [];
+      if (owners.length > 0) setBlind({ ...start, owners });
+      else fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const scanLpn = (scanned: string) =>
     run(async () => {
@@ -263,6 +296,76 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
     );
   }
 
+  // ---------- Without an ASN ----------
+
+  if (!asn && blind) {
+    return (
+      <>
+        <h1 className="rf-title">Receive without an ASN</h1>
+        {blind.owners.length > 0 ? (
+          <section className="rf-card" role="group" aria-label="Whose it is">
+            <p className="rf-card__action">Whose is it?</p>
+            <div className="rf-choices">
+              {blind.owners.map((o) => (
+                <button key={o} type="button" className="rf-button" disabled={busy} onClick={() => void beginBlind(o)}>
+                  {o}
+                </button>
+              ))}
+            </div>
+            {errorNote}
+          </section>
+        ) : (
+          <form
+            className="scan"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void beginBlind(null);
+            }}
+          >
+            <label className="scan__label" htmlFor="rf-blind-vendor">
+              Who is it from? (optional)
+            </label>
+            <input
+              id="rf-blind-vendor"
+              className="scan__input"
+              autoFocus
+              autoComplete="off"
+              maxLength={120}
+              value={blind.vendor}
+              onChange={(e) => setBlind({ ...blind, vendor: e.target.value })}
+            />
+            <label className="scan__label" htmlFor="rf-blind-reference">
+              PO, bill of lading or trailer (optional)
+            </label>
+            <input
+              id="rf-blind-reference"
+              className="scan__input"
+              autoComplete="off"
+              maxLength={60}
+              value={blind.reference}
+              onChange={(e) => setBlind({ ...blind, reference: e.target.value })}
+            />
+            {errorNote}
+            <button type="submit" className="rf-button rf-button--primary" disabled={busy}>
+              {busy ? 'Starting…' : 'Start receiving'}
+            </button>
+          </form>
+        )}
+        <button
+          type="button"
+          className="rf-button rf-button--quiet"
+          disabled={busy}
+          onClick={() => {
+            setError(null);
+            setBlind(null);
+          }}
+        >
+          Back
+        </button>
+      </>
+    );
+  }
+
   // ---------- Which ASN ----------
 
   if (!asn) {
@@ -279,15 +382,30 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
         {asns.length === 0 && <p className="rf-waiting muted">No ASNs are waiting to be received.</p>}
         <div className="rf-choices">
           {asns.map((a) => (
-            <button key={a.id} type="button" className="rf-button" disabled={busy} onClick={() => void chooseAsn(a.asnNumber)}>
+            <button key={a.id} type="button" className="rf-button" disabled={busy} onClick={() => void chooseAsn(a.asnNumber, a.owner?.code)}>
               <strong className="code">{a.asnNumber}</strong> {a.vendorName}
+              {severalOwners && a.owner && <span className="muted"> · for {a.owner.code}</span>}
               <span className="muted cell__sub">
-                {a.receivedQuantity.toLocaleString()} of {a.expectedQuantity.toLocaleString()} EA received
+                {a.blind
+                  ? `No ASN · ${a.receivedQuantity.toLocaleString()} EA received`
+                  : `${a.receivedQuantity.toLocaleString()} of ${a.expectedQuantity.toLocaleString()} EA received`}
                 {a.expectedDate && ` · due ${formatDay(a.expectedDate)}`}
               </span>
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className="rf-button"
+          disabled={busy}
+          onClick={() => {
+            setError(null);
+            setDone(null);
+            setBlind({ requestId: newRequestId(), vendor: '', reference: '', owners: [] });
+          }}
+        >
+          Receive without an ASN
+        </button>
         <button
           type="button"
           className="rf-button rf-button--quiet"
@@ -314,9 +432,13 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
           </span>
         )}
       </div>
-      <progress className="rf-progress" value={Math.min(asn.receivedQuantity, asn.expectedQuantity)} max={asn.expectedQuantity} aria-label="Received" />
+      {!asn.blind && (
+        <progress className="rf-progress" value={Math.min(asn.receivedQuantity, asn.expectedQuantity)} max={asn.expectedQuantity} aria-label="Received" />
+      )}
       <span className="muted">
-        {asn.receivedQuantity.toLocaleString()} of {asn.expectedQuantity.toLocaleString()} EA received
+        {asn.blind
+          ? `${asn.receivedQuantity.toLocaleString()} EA received, without an ASN`
+          : `${asn.receivedQuantity.toLocaleString()} of ${asn.expectedQuantity.toLocaleString()} EA received`}
       </span>
     </section>
   );
@@ -408,7 +530,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
       <>
         {strip}
         {errorNote}
-        <section className="rf-card" role="group" aria-label="Close ASN">
+        <section className="rf-card" role="group" aria-label={asn.blind ? 'Finish receipt' : 'Close ASN'}>
           <p className="rf-card__action">{shortBy ?? `Close ${asn.asnNumber}?`}</p>
           <p className="muted">{shortBy ? 'Close it short? Nothing more can be received on it.' : 'Nothing more can be received on it.'}</p>
           <div className="rf-choices">
@@ -418,7 +540,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
               disabled={busy}
               onClick={() => void close(shortBy !== null)}
             >
-              {shortBy ? 'Close short' : 'Close ASN'}
+              {shortBy ? 'Close short' : asn.blind ? 'Finish receipt' : 'Close ASN'}
             </button>
             <button type="button" className="rf-button rf-button--quiet" disabled={busy} onClick={back}>
               Keep receiving
@@ -439,7 +561,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
         {doneNote}
         <section className="rf-card">
           <p className="rf-card__action">Scan an LPN to receive into</p>
-          <p className="muted">The vendor's LPN, a new label, or an empty container.</p>
+          <p className="muted">{asn.blind ? 'A label on it, a new label, or an empty container.' : "The vendor's LPN, a new label, or an empty container."}</p>
         </section>
         <ScanInput label="LPN" busy={busy} error={error} onScan={(code) => void scanLpn(code)} />
         <button type="button" className="rf-button" disabled={busy} onClick={() => void scanLpn('')}>
@@ -468,7 +590,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
         {asn.receivedQuantity > 0 && (
           <button
             type="button"
-            className={`rf-button${asn.receivedQuantity >= asn.expectedQuantity ? ' rf-button--primary' : ''}`}
+            className={`rf-button${!asn.blind && asn.receivedQuantity >= asn.expectedQuantity ? ' rf-button--primary' : ''}`}
             disabled={busy}
             onClick={() => {
               setError(null);
@@ -476,7 +598,22 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
               setMode('close');
             }}
           >
-            Close ASN
+            {asn.blind ? 'Finish receipt' : 'Close ASN'}
+          </button>
+        )}
+        {asn.blind && asn.receivedQuantity === 0 && (
+          <button
+            type="button"
+            className="rf-button rf-button--quiet"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await discardBlind(asn.id);
+                await leaveAsn();
+              })
+            }
+          >
+            Discard it: nothing was received
           </button>
         )}
         {asn.receipts.some((r) => !r.reversedAt) && (
@@ -501,7 +638,7 @@ export function ReceivingTransaction({ onSignedOut }: { onSignedOut: () => void 
             void leaveAsn();
           }}
         >
-          Different ASN
+          {asn.blind ? 'Leave it for later' : 'Different ASN'}
         </button>
       </>
     );

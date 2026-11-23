@@ -13,6 +13,7 @@ import {
 } from '../../api/control';
 import { ApiError, errorMessage } from '../../api/http';
 import type { ItemScan } from '../../api/rf';
+import { ownersAsked } from '../../api/owners';
 import { newRequestId } from '../../forms/requestId';
 import { ScanInput } from './ScanInput';
 import { useRf } from './useRf';
@@ -35,6 +36,8 @@ export function CountTransaction({ onSignedOut }: { onSignedOut: () => void }) {
   const [scanningLpn, setScanningLpn] = useState(false);
   const [counted, setCounted] = useState<Counted | null>(null);
   const [confirming, setConfirming] = useState(false);
+  /** A scanned item that several owners have, waiting to hear whose it is. */
+  const [whose, setWhose] = useState<{ code: string; owners: string[] } | null>(null);
   const [takeOver, setTakeOver] = useState<{ location: string; message: string } | null>(null);
   /** An entry that got no answer, sent again under the same ID. */
   const [pending, setPending] = useState<CountEntryInput | null>(null);
@@ -106,9 +109,25 @@ export function CountTransaction({ onSignedOut }: { onSignedOut: () => void }) {
       }
     });
 
+  const scanItem = (code: string, owner?: string) => {
+    setWhose(null);
+    return rf.run(
+      async () => {
+        const found = await getCountItem(code, owner);
+        setCounted({ ...found, code, lot: null, serials: [] });
+      },
+      (e) => {
+        const owners = ownersAsked(e.fieldErrors);
+        if (owners.length === 0) return false;
+        setWhose({ code, owners });
+        return true;
+      },
+    );
+  };
+
   const enter = (c: Counted, quantity: number | null) =>
     send(
-      { requestId: newRequestId(), lpnId: lpn, itemBarcode: c.code, quantity, lotNumber: c.lot, serialNumbers: c.serials },
+      { requestId: newRequestId(), lpnId: lpn, itemBarcode: c.code, owner: c.item.owner, quantity, lotNumber: c.lot, serialNumbers: c.serials },
       `Counted ${(quantity ?? c.serials.length).toLocaleString()} ${c.item.serialControlled ? 'EA' : c.scan.uom} of ${c.item.itemId}`,
     );
 
@@ -357,12 +376,21 @@ export function CountTransaction({ onSignedOut }: { onSignedOut: () => void }) {
         busy={rf.busy}
         error={rf.error}
         onScan={(code) =>
-          void rf.run(async () => {
-            const found = await getCountItem(code);
-            setCounted({ ...found, code, lot: null, serials: [] });
-          })
+          void scanItem(code)
         }
       />
+      {whose && (
+        <section className="rf-card" role="group" aria-label="Whose is it">
+          <p className="rf-card__action">Whose is {whose.code.toUpperCase()}?</p>
+          <div className="rf-choices">
+            {whose.owners.map((o) => (
+              <button key={o} type="button" className="rf-button" disabled={rf.busy} onClick={() => void scanItem(whose.code, o)}>
+                {o}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="rf-choices">
         <button type="button" className="rf-button" disabled={rf.busy} onClick={() => setScanningLpn(true)}>
           {lpn ? 'Count another LPN' : 'Count inside an LPN'}

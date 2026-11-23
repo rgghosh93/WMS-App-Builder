@@ -44,7 +44,15 @@ public interface OrderRepository extends JpaRepository<OutboundOrder, UUID>, Jpa
             order by o.priority asc, o.requestedShipDate asc nulls last, o.orderNumber asc""")
     List<UUID> findShortOf(UUID itemId);
 
-    Optional<OutboundOrder> findByOrderNumber(String orderNumber);
+    /** Items that orders tried to get and are short of. */
+    @Query("""
+            select distinct l.item.id from OrderLine l join l.order o where o.status not in (com.wms.outbound.OrderStatus.NEW,
+                com.wms.outbound.OrderStatus.CANCELLED, com.wms.outbound.OrderStatus.SHIPPED)
+            and l.status <> com.wms.outbound.LineStatus.CANCELLED
+            and l.orderedQuantity - l.closedQuantity - l.allocatedQuantity > 0""")
+    List<UUID> findItemsShortOf();
+
+    Optional<OutboundOrder> findByOwnerIdAndOrderNumber(UUID ownerId, String orderNumber);
 
     @Query(value = "select nextval('order_number_seq')", nativeQuery = true)
     long nextOrderNumber();

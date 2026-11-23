@@ -12,6 +12,13 @@ public interface WaitingOrders {
     /** Orders short of an item, most urgent first. */
     List<UUID> waitingFor(UUID itemId);
 
-    /** Tries again to get an order stock of an item. */
-    void tryAgain(UUID orderId, UUID itemId);
+    /** Items that orders are short of. */
+    List<UUID> itemsWaitedFor();
+
+    /**
+     * Tries again to get an order stock of an item.
+     *
+     * @return whether there may be some left for others
+     */
+    boolean tryAgain(UUID orderId, UUID itemId);
 }

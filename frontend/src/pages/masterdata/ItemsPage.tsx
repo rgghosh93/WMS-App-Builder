@@ -14,6 +14,8 @@ import {
 import { listUoms, type Uom } from '../../api/uoms';
 import { formatDimensions, formatWeight } from '../../api/measure';
 import { errorMessage, type Page } from '../../api/http';
+import { useOwners } from '../../api/owners';
+import { OwnerFilter } from '../../components/OwnerSelect';
 import { PAGE_SIZES, Pagination } from '../../components/Pagination';
 import { SearchBox } from '../../components/SearchBox';
 import { SortableHeader, type Column } from '../../components/SortableHeader';
@@ -51,6 +53,7 @@ export function ItemsPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [units, setUnits] = useState<Uom[]>([]);
+  const { several } = useOwners();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -98,7 +101,7 @@ export function ItemsPage() {
   }, [notice]);
 
   const page = state.status === 'ready' ? state.page : state.status === 'loading' ? state.previous : undefined;
-  const filtered = Boolean(query.q || query.status);
+  const filtered = Boolean(query.q || query.status || query.owner);
 
   const toggleSort = (field: ItemSortField) => {
     const dir = query.sort === field && query.dir === 'asc' ? 'desc' : 'asc';
@@ -149,6 +152,7 @@ export function ItemsPage() {
             ))}
           </select>
         </label>
+        <OwnerFilter value={query.owner ?? ''} onChange={(owner) => updateQuery({ owner })} />
         <span className="toolbar__count muted" aria-live="polite">
           {page ? `${page.totalElements.toLocaleString()} item${page.totalElements === 1 ? '' : 's'}` : ''}
         </span>
@@ -181,6 +185,7 @@ export function ItemsPage() {
                     >
                       {item.itemId}
                     </button>
+                    {several && item.owner && <span className="muted cell__sub">{item.owner.code}</span>}
                   </th>
                   <td className="cell--wrap">{item.description}</td>
                   <td>
@@ -263,6 +268,7 @@ function readQuery(params: URLSearchParams): ItemQuery {
   const page = Number(params.get('page'));
   return {
     q: params.get('q') ?? '',
+    owner: params.get('owner') ?? '',
     status: status === 'ACTIVE' || status === 'INACTIVE' ? status : '',
     sort: sort && SORT_FIELDS.includes(sort) ? sort : 'itemId',
     dir: params.get('dir') === 'desc' ? 'desc' : 'asc',
@@ -274,6 +280,7 @@ function readQuery(params: URLSearchParams): ItemQuery {
 function writeQuery(q: ItemQuery): URLSearchParams {
   const params = new URLSearchParams();
   if (q.q) params.set('q', q.q);
+  if (q.owner) params.set('owner', q.owner);
   if (q.status) params.set('status', q.status);
   if (q.sort !== 'itemId') params.set('sort', q.sort);
   if (q.dir !== 'asc') params.set('dir', q.dir);

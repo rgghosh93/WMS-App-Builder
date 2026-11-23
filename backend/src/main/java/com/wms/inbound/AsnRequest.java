@@ -18,6 +18,7 @@ import jakarta.validation.constraints.Size;
  * A new ASN, as sent by a vendor or entered by hand.
  *
  * @param asnNumber optional; one is generated (AS000001...) when left out
+ * @param owner     code of whose goods they are; the first owner if left out
  * @param reference the vendor's or carrier's own number
  */
 public record AsnRequest(
@@ -25,7 +26,13 @@ public record AsnRequest(
         @NotBlank @Size(max = 120) String vendorName,
         @Size(max = 60) String reference,
         LocalDate expectedDate,
-        @NotEmpty(message = "add at least one line") @Size(max = 500) List<@Valid @NotNull Line> lines) {
+        @NotEmpty(message = "add at least one line") @Size(max = 500) List<@Valid @NotNull Line> lines,
+        @Size(max = 20) String owner) {
+
+    /** Of the first owner. */
+    public AsnRequest(String asnNumber, String vendorName, String reference, LocalDate expectedDate, List<Line> lines) {
+        this(asnNumber, vendorName, reference, expectedDate, lines, null);
+    }
 
     /**
      * @param quantity   in eaches

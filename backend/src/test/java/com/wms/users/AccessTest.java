@@ -70,7 +70,7 @@ class AccessTest {
         List<String> open = new ArrayList<>();
         mappings.getHandlerMethods().forEach((info, method) -> {
             for (String path : info.getPatternValues()) {
-                if (!path.startsWith("/api/") || path.startsWith("/api/session") || path.equals("/api/rf/session")) {
+                if (!path.startsWith("/api/") || path.startsWith("/api/session") || path.startsWith("/api/rf/session")) {
                     continue;
                 }
                 Requires requires = AccessConfig.required(method);

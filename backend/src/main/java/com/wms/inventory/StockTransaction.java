@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.hibernate.annotations.Immutable;
 
+import com.wms.facility.FacilityRecord;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,7 +22,7 @@ import jakarta.persistence.Table;
 @Entity
 @Immutable
 @Table(name = "inventory_transactions")
-public class StockTransaction {
+public class StockTransaction extends FacilityRecord {
 
     public enum Type {
         /** On hand when the history began. */
@@ -58,6 +60,10 @@ public class StockTransaction {
 
     @Column(name = "item_code", nullable = false, length = 40)
     private String itemCode;
+
+    /** Whose stock it was. */
+    @Column(name = "owner_code", nullable = false, length = 20)
+    private String ownerCode;
 
     @Column(name = "lot_number", length = 40)
     private String lotNumber;
@@ -111,13 +117,15 @@ public class StockTransaction {
     }
 
     StockTransaction(long number, Type type, InventoryRecord what, int quantity, StockLedger.Place from, StockLedger.Place to,
-                     InventoryStatus fromStatus, InventoryStatus toStatus, StockLedger.Note note, String userName) {
+                     InventoryStatus fromStatus, InventoryStatus toStatus, StockLedger.Note note, String userName,
+                     String ownerCode) {
         this.id = UUID.randomUUID();
         this.number = number;
         this.occurredAt = Instant.now();
         this.type = type;
         this.itemId = what.getItem().getId();
         this.itemCode = what.getItem().getItemId();
+        this.ownerCode = ownerCode;
         this.lotNumber = what.getLotNumber();
         this.serialNumber = what.getSerialNumber();
         this.expiryDate = what.getExpiryDate();
@@ -140,6 +148,7 @@ public class StockTransaction {
     public Instant getOccurredAt() { return occurredAt; }
     public Type getType() { return type; }
     public UUID getItemId() { return itemId; }
+    public String getOwnerCode() { return ownerCode; }
     public String getItemCode() { return itemCode; }
     public String getLotNumber() { return lotNumber; }
     public String getSerialNumber() { return serialNumber; }

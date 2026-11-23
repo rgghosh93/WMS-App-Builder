@@ -11,6 +11,8 @@ export interface SignedIn {
   leave: () => void;
   /** The server no longer knows this session: go back to sign-in. */
   onSignedOut: () => void;
+  /** They go on somewhere else, or as something else. */
+  onUser: (user: DeviceUser) => void;
   signOutError: string | null;
 }
 
@@ -59,5 +61,5 @@ export function SessionGate({ children }: { children: (session: SignedIn) => Rea
     );
   }
   if (session.status === 'out') return <SignInScreen onSignedIn={(user) => setSession({ status: 'in', user })} />;
-  return <>{children({ user: session.user, leave: () => void leave(), onSignedOut, signOutError })}</>;
+  return <>{children({ user: session.user, leave: () => void leave(), onSignedOut, onUser: (user) => setSession({ status: 'in', user }), signOutError })}</>;
 }

@@ -1,5 +1,6 @@
 import { request, type Page } from './http';
 import type { DimensionUom, WeightUom } from './measure';
+import type { OwnerRef } from './owners';
 import type { UomKind } from './uoms';
 
 export type ItemStatus = 'ACTIVE' | 'INACTIVE';
@@ -11,6 +12,8 @@ export const ITEM_STATUSES: { value: ItemStatus; label: string }[] = [
 
 export interface Item {
   id: string;
+  /** Whose it is. */
+  owner?: OwnerRef | null;
   itemId: string;
   description: string;
   status: ItemStatus;
@@ -65,6 +68,8 @@ export function packagingSummary(uoms: ItemUom[]): string {
 }
 
 export interface ItemInput {
+  /** Code of whose it is; the first owner if left out. */
+  owner?: string;
   itemId: string;
   description: string;
   status: ItemStatus;
@@ -88,6 +93,7 @@ export type ItemSortField = 'itemId' | 'description' | 'status' | 'barcode' | 'u
 export interface ItemQuery {
   q: string;
   status: ItemStatus | '';
+  owner?: string;
   page: number;
   size: number;
   sort: ItemSortField;
@@ -100,6 +106,7 @@ export function listItems(query: ItemQuery, signal?: AbortSignal): Promise<Page<
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.status) params.set('status', query.status);
+  if (query.owner) params.set('owner', query.owner);
   params.set('page', String(query.page));
   params.set('size', String(query.size));
   params.set('sort', query.sort);

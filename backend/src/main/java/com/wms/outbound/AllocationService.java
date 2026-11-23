@@ -104,7 +104,10 @@ public class AllocationService {
                 events.save(new OrderEvent(order, Type.TASKS_CREATED, taskMessage(task, counts, of.size())));
             }
         }
-        orders.forEach(OutboundOrder::refreshStatus);
+        if (itemId == null || !created.isEmpty()) {
+            // An order that is only tried again, and gets nothing, is left as it is.
+            orders.forEach(OutboundOrder::refreshStatus);
+        }
         return created;
     }
 

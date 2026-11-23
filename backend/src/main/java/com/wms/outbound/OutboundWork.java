@@ -77,7 +77,7 @@ final class OutboundWork {
 
         @Override
         public List<WorkItem> active() {
-            return tasks.findByStatusNot(PackTaskStatus.COMPLETED).stream().map(t -> {
+            return tasks.findByStatusIn(List.of(PackTaskStatus.OPEN, PackTaskStatus.IN_PROGRESS)).stream().map(t -> {
                 AppUser user = t.getStatus() == PackTaskStatus.IN_PROGRESS ? t.getAssignedTo() : null;
                 return new WorkItem(WorkKind.PACK, t.getId(), t.getTaskNumber(),
                         "Pack " + t.orders().stream().map(OutboundOrder::getOrderNumber).collect(Collectors.joining(", ")), t.getStation(),

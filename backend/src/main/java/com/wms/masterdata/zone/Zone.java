@@ -3,6 +3,7 @@ package com.wms.masterdata.zone;
 import java.util.UUID;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.FacilityRecord;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,7 +16,7 @@ import jakarta.persistence.Version;
 /** A grouping of storage locations for one function. Not the zone in a location's address. */
 @Entity
 @Table(name = "zones")
-public class Zone {
+public class Zone extends FacilityRecord {
 
     /** What locations in no allocation zone, or in one without a priority, count as. */
     public static final int LAST = 1000;

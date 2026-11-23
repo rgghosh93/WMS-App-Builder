@@ -8,10 +8,12 @@ import java.util.UUID;
 import com.wms.common.ActiveStatus;
 import com.wms.common.measure.DimensionUom;
 import com.wms.common.measure.WeightUom;
+import com.wms.masterdata.owner.OwnerRef;
 
 /** An item with its packaging levels, smallest first. */
 public record ItemResponse(
         UUID id,
+        OwnerRef owner,
         String itemId,
         String description,
         ActiveStatus status,
@@ -33,7 +35,7 @@ public record ItemResponse(
 
     static ItemResponse from(Item i) {
         return new ItemResponse(
-                i.getId(), i.getItemId(), i.getDescription(), i.getStatus(), i.getBarcode(),
+                i.getId(), OwnerRef.of(i.getOwner()), i.getItemId(), i.getDescription(), i.getStatus(), i.getBarcode(),
                 i.isLotControlled(), i.isSerialControlled(), i.isExpiryControlled(), i.getShelfLifeDays(),
                 i.getWidth(), i.getDepth(), i.getHeight(), i.getDimensionUom(),
                 i.getWeight(), i.getWeightUom(),

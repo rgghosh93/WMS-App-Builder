@@ -1,5 +1,8 @@
 package com.wms.control;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,10 +16,14 @@ import com.wms.control.ControlViews.ItemRef;
 import com.wms.control.ControlViews.MovableLine;
 import com.wms.control.ControlViews.MoveResult;
 import com.wms.control.ControlViews.MoveSource;
+import com.wms.control.ControlViews.PutBack;
+import com.wms.inventory.BusyLpns;
 import com.wms.inventory.InventoryRecord;
 import com.wms.inventory.InventoryRepository;
+import com.wms.inventory.InventoryStatus;
 import com.wms.inventory.LocationLocks;
 import com.wms.inventory.LooseStock;
+import com.wms.inventory.LpnLifecycle;
 import com.wms.inventory.PlannedMoves;
 import com.wms.inventory.StockLedger;
 import com.wms.inventory.StockLedger.Place;
@@ -31,7 +38,10 @@ import com.wms.masterdata.location.LocationRepository;
 import com.wms.masterdata.location.LocationType;
 import com.wms.putaway.StorageSpace;
 
-/** Moving stock from one storage location to another: a whole LPN, or some of what lies loose. */
+/**
+ * Moving stock from one storage location to another: a whole LPN, or some of what lies loose. Also back to storage from a
+ * pack station, where things can be taken out of LPNs as well, as those hold what different orders were picked for.
+ */
 @Service
 @Transactional
 public class MoveService {
@@ -45,9 +55,14 @@ public class MoveService {
     private final StockLedger ledger;
     private final LooseStock loose;
     private final PlannedMoves moves;
+    private final LpnLifecycle lifecycle;
+    private final BusyLpns busy;
 
     MoveService(InventoryRepository inventory, ContainerRepository containers, LocationRepository locations, StockQueryService stock,
-                LocationLocks locks, StorageSpace space, StockLedger ledger, LooseStock loose, PlannedMoves moves) {
+                LocationLocks locks, StorageSpace space, StockLedger ledger, LooseStock loose, PlannedMoves moves,
+                LpnLifecycle lifecycle, BusyLpns busy) {
+        this.lifecycle = lifecycle;
+        this.busy = busy;
         this.inventory = inventory;
         this.containers = containers;
         this.locations = locations;
@@ -66,7 +81,30 @@ public class MoveService {
     public record MoveLoose(UUID requestId, UUID inventoryId, Integer quantity, String toLocationId, Boolean allowOver) {
     }
 
-    /** An LPN in storage, or a storage location with loose stock. */
+    /** Stock at pack stations that nothing has reserved. */
+    @Transactional(readOnly = true)
+    public List<PutBack> putBack() {
+        return putBack(inventory.findAtType(LocationType.PACKING));
+    }
+
+    private List<PutBack> putBack(List<InventoryRecord> records) {
+        Map<UUID, Integer> reserved = stock.reserved(records);
+        Map<List<String>, List<InventoryRecord>> places = new LinkedHashMap<>();
+        for (InventoryRecord r : records) {
+            if (r.getQuantity() > reserved.getOrDefault(r.getId(), 0)) {
+                Location at = StockLedger.locationOf(r);
+                places.computeIfAbsent(Arrays.asList(at.getLocationId(), r.getContainer() == null ? null : r.getContainer().getLpnId()),
+                        k -> new ArrayList<>()).add(r);
+            }
+        }
+        return places.entrySet().stream().map(e -> new PutBack(e.getKey().get(0), e.getKey().get(1),
+                e.getValue().stream().map(r -> r.getItem().getItemId()).distinct().sorted().toList(),
+                e.getValue().stream().mapToInt(r -> r.getQuantity() - reserved.getOrDefault(r.getId(), 0)).sum(),
+                e.getValue().stream().filter(r -> r.getStatus() != InventoryStatus.AVAILABLE)
+                        .mapToInt(r -> r.getQuantity() - reserved.getOrDefault(r.getId(), 0)).sum())).toList();
+    }
+
+    /** An LPN in storage or at a pack station, or such a location with loose stock. */
     @Transactional(readOnly = true)
     public MoveSource source(String scanned) {
         String code = Codes.normalize(scanned);
@@ -76,7 +114,18 @@ public class MoveService {
         Container lpn = containers.findByLpnId(code).orElse(null);
         if (lpn != null) {
             Location at = checkLpn(lpn);
-            return new MoveSource(code, lpn.getContainerType().getDescription(), at.getLocationId(), lines(space.contents(lpn)));
+            List<InventoryRecord> contents = space.contents(lpn);
+            if (at.getType() == LocationType.STORAGE) {
+                return new MoveSource(code, lpn.getContainerType().getDescription(), at.getLocationId(), true, false, null, lines(contents), List.of());
+            }
+            List<MovableLine> free = lines(contents.stream().filter(r -> r.getContainer().getId().equals(lpn.getId())).toList());
+            if (free.stream().allMatch(l -> l.free() == 0)) {
+                throw invalid("code", "Everything in " + code + " is reserved for orders, so it stays at " + at.getLocationId());
+            }
+            String whyStays = busy.busyWith(lpn.getId()).map(b -> code + " " + b).orElse(
+                    free.stream().anyMatch(l -> l.free() < l.quantity()) ? "Some of " + code + " is reserved" : null);
+            return new MoveSource(code, lpn.getContainerType().getDescription(), at.getLocationId(), whyStays == null, true, whyStays,
+                    free.stream().filter(l -> l.free() > 0).toList(), List.of());
         }
         Location at = locations.findByLocationId(code).orElse(null);
         if (at == null) {
@@ -84,10 +133,14 @@ public class MoveService {
         }
         checkFrom(at);
         List<InventoryRecord> loose = inventory.findByLocation_IdIn(List.of(at.getId()));
-        if (loose.isEmpty()) {
-            throw invalid("code", code + " holds nothing loose. Scan the LPN to move");
+        List<PutBack> lpns = at.getType() != LocationType.PACKING ? List.of()
+                : putBack(inventory.findAtType(LocationType.PACKING).stream()
+                        .filter(r -> r.getContainer() != null && StockLedger.locationOf(r).getId().equals(at.getId())).toList());
+        if (loose.isEmpty() && lpns.isEmpty()) {
+            throw invalid("code", at.getType() == LocationType.PACKING ? "There is nothing to put back at " + code
+                    : code + " holds nothing loose. Scan the LPN to move");
         }
-        return new MoveSource(null, null, code, lines(loose));
+        return new MoveSource(null, null, code, false, false, null, lines(loose), lpns);
     }
 
     public MoveResult lpn(Actor actor, MoveLpn request) {
@@ -103,6 +156,9 @@ public class MoveService {
             return done; // sent twice, or there already
         }
         checkLpn(lpn);
+        busy.busyWith(lpn.getId()).ifPresent(b -> {
+            throw ApiException.conflict(code + " " + b + ", so it has to stay.", Map.of());
+        });
         List<InventoryRecord> contents = space.contents(lpn);
         if (!contents.isEmpty()) {
             contents = inventory.findLocked(contents.stream().map(InventoryRecord::getId).toList());
@@ -132,10 +188,13 @@ public class MoveService {
         }
         InventoryRecord r = request.inventoryId() == null ? null
                 : inventory.findLocked(List.of(request.inventoryId())).stream().findFirst().orElse(null);
-        if (r == null || r.getLocation() == null) {
-            throw ApiException.conflict("That stock is no longer there. Scan the location again.", Map.of());
+        Location from = r == null ? null : StockLedger.locationOf(r);
+        // Out of an LPN only at a pack station; in storage an LPN is moved whole.
+        if (from == null || r.getLocation() == null && from.getType() != LocationType.PACKING) {
+            throw ApiException.conflict("That stock is no longer there. Scan " + (r == null || r.getLocation() != null ? "the location" : "it")
+                    + " again.", Map.of());
         }
-        Location from = r.getLocation();
+        Container out = r.getContainer();
         checkFrom(from);
         if (from.getId().equals(to.getId())) {
             throw invalid("toLocationId", "It is already at " + to.getLocationId());
@@ -155,8 +214,11 @@ public class MoveService {
         }
         InventoryRecord moving = quantity == r.getQuantity() ? r : r.copy(quantity);
         checkRoom(space.forLoose(moving, to), request.allowOver());
-        ledger.log(Type.MOVE, r, quantity, Place.at(from, null), Place.at(to, null), actor.note(null).request(request.requestId()));
+        ledger.log(Type.MOVE, r, quantity, Place.at(from, out), Place.at(to, null), actor.note(null).request(request.requestId()));
         loose.put(r, quantity, to);
+        if (out != null && busy.busyWith(out.getId()).isEmpty()) {
+            lifecycle.retireIfEmptied(out);
+        }
         return new MoveResult("Moved %,d EA of %s to %s".formatted(quantity, r.getItem().getItemId(), to.getLocationId()));
     }
 
@@ -179,20 +241,24 @@ public class MoveService {
         if (at != null && at.getType().isForReceiving()) {
             throw invalid("lpnId", lpn.getLpnId() + " is at " + at.getLocationId() + ". Put it away instead");
         }
-        if (at == null || at.getType() != LocationType.STORAGE || lpn.getStatus() != ContainerStatus.IN_USE) {
-            throw invalid("lpnId", lpn.getLpnId() + " is not in storage");
+        if (at == null || !movableFrom(at) || lpn.getStatus() != ContainerStatus.IN_USE) {
+            throw invalid("lpnId", lpn.getLpnId() + " is not in storage or at a pack station");
         }
         checkFrom(at);
         return at;
     }
 
     private void checkFrom(Location at) {
-        if (at.getType() != LocationType.STORAGE) {
-            throw invalid("code", at.getLocationId() + " is not a storage location");
+        if (!movableFrom(at)) {
+            throw invalid("code", at.getLocationId() + " is not a storage location or pack station");
         }
         if (locks.isLocked(at.getId())) {
             throw ApiException.conflict(at.getLocationId() + " is being counted.", Map.of());
         }
+    }
+
+    private static boolean movableFrom(Location at) {
+        return at.getType() == LocationType.STORAGE || at.getType() == LocationType.PACKING;
     }
 
     private Location destination(String scanned) {

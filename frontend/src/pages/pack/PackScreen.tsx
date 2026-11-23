@@ -49,7 +49,7 @@ export function PackScreen({ user, task: initial, onBack, onCompleted, onSignedO
   }, []);
 
   const apply = (next: PackTask) => {
-    if (next.status === 'COMPLETED') {
+    if (next.status === 'COMPLETED' || next.status === 'CANCELLED') {
       onCompleted(next);
       return;
     }
@@ -258,7 +258,7 @@ export function PackScreen({ user, task: initial, onBack, onCompleted, onSignedO
                 </tr>
               </thead>
               <tbody>
-                {task.details.map((d) => (
+                {task.details.filter((d) => d.cancelledQuantity === 0).map((d) => (
                   <tr key={d.id} className={d.remaining === 0 ? 'station__row--done' : undefined}>
                     {task.orders.length > 1 && <td className="code">{d.order.orderNumber}</td>}
                     <td>
@@ -292,6 +292,11 @@ export function PackScreen({ user, task: initial, onBack, onCompleted, onSignedO
             </table>
           </div>
         </section>
+        {task.details.some((d) => d.cancelledQuantity > 0) && (
+          <p className="notice" role="note">
+            Some of what is in {task.container.lpnId} is for an order since cancelled or undone. Leave it there: it goes back to storage.
+          </p>
+        )}
         {task.cartons.length > 0 && (
           <section aria-labelledby="pack-cartons-title">
             <h2 id="pack-cartons-title">Cartons</h2>

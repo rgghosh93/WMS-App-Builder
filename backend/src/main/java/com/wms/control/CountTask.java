@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.location.Location;
 
 import jakarta.persistence.CascadeType;
@@ -24,7 +25,7 @@ import jakarta.persistence.Version;
 /** Counting everything at one location. The location is locked from when counting starts until it is settled. */
 @Entity
 @Table(name = "count_tasks")
-public class CountTask {
+public class CountTask extends FacilityRecord {
 
     public enum Status {
         /** Planned. */

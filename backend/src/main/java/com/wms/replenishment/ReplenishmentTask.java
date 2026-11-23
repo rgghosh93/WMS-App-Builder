@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryRecord;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
@@ -24,7 +25,7 @@ import jakarta.persistence.Version;
 /** Moving some of one inventory record to a pick location. Until it is moved, that much is set aside for it. */
 @Entity
 @Table(name = "replenishment_tasks")
-public class ReplenishmentTask {
+public class ReplenishmentTask extends FacilityRecord {
 
     public enum Status { OPEN, IN_PROGRESS, COMPLETED, CANCELLED }
 

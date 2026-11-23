@@ -45,8 +45,7 @@ import com.wms.masterdata.container.ContainerStatus;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.item.ItemRepository;
 import com.wms.masterdata.item.ItemScan;
-import com.wms.masterdata.item.ItemUom;
-import com.wms.masterdata.item.ItemUomRepository;
+import com.wms.masterdata.item.ItemFinder;
 import com.wms.masterdata.location.Location;
 import com.wms.masterdata.location.LocationRepository;
 import com.wms.masterdata.location.LocationType;
@@ -75,7 +74,7 @@ public class CountService {
     private final ContainerRepository containers;
     private final LocationRepository locations;
     private final ItemRepository items;
-    private final ItemUomRepository itemUoms;
+    private final ItemFinder finder;
     private final StockQueryService stock;
     private final AdjustmentService adjustments;
     private final StockReservations reservations;
@@ -86,7 +85,7 @@ public class CountService {
     private final Zones zones;
 
     CountService(CountTaskRepository counts, InventoryRepository inventory, ContainerRepository containers, LocationRepository locations,
-                 ItemRepository items, ItemUomRepository itemUoms, StockQueryService stock, AdjustmentService adjustments,
+                 ItemRepository items, ItemFinder finder, StockQueryService stock, AdjustmentService adjustments,
                  StockReservations reservations, PlannedMoves moves, StorageSpace space, ReasonService reasons, Zones zones,
                  Directions directions) {
         this.counts = counts;
@@ -94,7 +93,7 @@ public class CountService {
         this.containers = containers;
         this.locations = locations;
         this.items = items;
-        this.itemUoms = itemUoms;
+        this.finder = finder;
         this.stock = stock;
         this.adjustments = adjustments;
         this.reservations = reservations;
@@ -109,11 +108,14 @@ public class CountService {
      * What to count: a location, everywhere an item is, a counting zone, or an address zone of an area. Empty
      * locations of a zone only if asked.
      */
-    public record Plan(String locationId, String area, String zone, UUID zoneId, String itemId, Boolean includeEmpty) {
+    public record Plan(String locationId, String area, String zone, UUID zoneId, String itemId, String owner, Boolean includeEmpty) {
     }
 
-    /** @param requestId made by the device; sending it again counts nothing more */
-    public record Entry(UUID requestId, String lpnId, String itemBarcode, Integer quantity, String lotNumber, List<String> serialNumbers) {
+    /**
+     * @param requestId made by the device; sending it again counts nothing more
+     * @param owner     code of whose item it is, if several have what was scanned
+     */
+    public record Entry(UUID requestId, String lpnId, String itemBarcode, String owner, Integer quantity, String lotNumber, List<String> serialNumbers) {
     }
 
     // ---------- On the desktop ----------
@@ -157,7 +159,7 @@ public class CountService {
         }
         String itemCode = Codes.normalize(plan.itemId());
         if (itemCode != null) {
-            Item item = items.findByItemId(itemCode).orElseThrow(() -> invalid("itemId", itemCode + " is not a known item"));
+            Item item = finder.byId(itemCode, plan.owner(), "itemId");
             return inventory.findByItem_Id(item.getId()).stream().map(StockLedger::locationOf)
                     .filter(l -> l != null && l.getType() == LocationType.STORAGE).distinct().toList();
         }
@@ -285,8 +287,8 @@ public class CountService {
 
     /** What a scanned item is. It doesn't have to be expected here. */
     @Transactional(readOnly = true)
-    public CountItem item(String scanned) {
-        return found(scanned);
+    public CountItem item(String scanned, String owner) {
+        return found(scanned, owner);
     }
 
     public CountState enter(Actor actor, UUID id, Entry entry) {
@@ -297,7 +299,7 @@ public class CountService {
         if (task.getEntries().stream().anyMatch(e -> e.getRequestId().equals(entry.requestId()))) {
             return state(actor.id());
         }
-        CountItem scanned = found(entry.itemBarcode());
+        CountItem scanned = found(entry.itemBarcode(), entry.owner());
         Item item = items.findById(scanned.item().id()).orElseThrow();
         Container lpn = lpnHere(task, entry.lpnId());
         String lot = null;
@@ -494,13 +496,9 @@ public class CountService {
 
     // ---------- Checks ----------
 
-    private CountItem found(String scanned) {
+    private CountItem found(String scanned, String owner) {
+        Item item = finder.scanned(scanned, owner, "itemBarcode");
         String code = Codes.normalize(scanned);
-        Item item = code == null ? null : items.findByItemId(code).or(() -> items.findByBarcode(code))
-                .or(() -> itemUoms.findFirstByBarcode(code).map(ItemUom::getItem)).orElse(null);
-        if (item == null) {
-            throw invalid("itemBarcode", code == null ? "Scan an item" : code + " is not a known item");
-        }
         ItemScan scan = ItemScan.of(item).stream().filter(s -> s.value().equalsIgnoreCase(code)).findFirst()
                 .orElseGet(() -> new ItemScan(item.getItemId(), "EA", 1));
         return new CountItem(ItemRef.of(item), scan);

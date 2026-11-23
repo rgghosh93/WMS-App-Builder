@@ -3,8 +3,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { createAsn, type AsnDetail } from '../../api/asns';
 import { ApiError, errorMessage } from '../../api/http';
 import { listItems, type Item } from '../../api/items';
+import { useOwners } from '../../api/owners';
 import { Drawer } from '../../components/Drawer';
 import { Field, sentenceCase } from '../../components/Field';
+import { OwnerSelect } from '../../components/OwnerSelect';
 import { SearchPicker } from '../../components/SearchPicker';
 import { positiveIntegerError } from '../../forms/validation';
 
@@ -36,6 +38,8 @@ export function NewAsnForm({ onClose, onCreated }: NewAsnFormProps) {
   const [reference, setReference] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [lines, setLines] = useState<LineValues[]>(() => [newLine()]);
+  const [owner, setOwner] = useState('');
+  const { several } = useOwners();
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,6 +59,7 @@ export function NewAsnForm({ onClose, onCreated }: NewAsnFormProps) {
   const validate = (): Errors => {
     const found: Errors = {};
     if (asnNumber.trim() && !CODE_PATTERN.test(asnNumber.trim())) found.asnNumber = "Use letters, numbers, '-', '_' or '.'";
+    if (several && !owner) found.owner = 'Choose whose it is';
     if (!vendor.trim()) found.vendorName = 'Enter the vendor';
     lines.forEach((line, i) => {
       if (!line.item) found[`lines[${i}].itemId`] = 'Choose an item';
@@ -75,6 +80,7 @@ export function NewAsnForm({ onClose, onCreated }: NewAsnFormProps) {
     try {
       onCreated(
         await createAsn({
+          owner: owner || undefined,
           asnNumber: asnNumber.trim() || null,
           vendorName: vendor.trim(),
           reference: reference.trim() || null,
@@ -101,7 +107,7 @@ export function NewAsnForm({ onClose, onCreated }: NewAsnFormProps) {
   };
 
   const searchItems = (text: string, signal: AbortSignal) =>
-    listItems({ q: text, status: 'ACTIVE', page: 0, size: 8, sort: 'itemId', dir: 'asc' }, signal).then((p) => p.content);
+    listItems({ q: text, status: 'ACTIVE', owner, page: 0, size: 8, sort: 'itemId', dir: 'asc' }, signal).then((p) => p.content);
 
   const footer = (
     <div className="button-row button-row--end">
@@ -122,6 +128,17 @@ export function NewAsnForm({ onClose, onCreated }: NewAsnFormProps) {
             {formError}
           </div>
         )}
+        <OwnerSelect
+          id="asn-owner"
+          value={owner}
+          error={errors.owner}
+          onChange={(code) => {
+            setOwner(code);
+            // Items are their owner's, so those chosen don't fit another.
+            setLines((current) => current.map((l) => ({ ...l, item: null })));
+            clear('owner');
+          }}
+        />
         <div className="grid grid--2">
           <Field id="asn-vendor" label="Vendor" error={errors.vendorName}>
             <input

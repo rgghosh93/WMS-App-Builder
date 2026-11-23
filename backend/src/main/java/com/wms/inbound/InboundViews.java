@@ -10,6 +10,7 @@ import com.wms.masterdata.container.ContainerType;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.item.ItemScan;
 import com.wms.masterdata.location.Location;
+import com.wms.masterdata.owner.OwnerRef;
 
 /** Read models for ASNs and receiving. */
 public final class InboundViews {
@@ -67,20 +68,24 @@ public final class InboundViews {
     }
 
     /** One ASN in the list. */
-    public record AsnSummary(UUID id, String asnNumber, String vendorName, String reference, LocalDate expectedDate,
-                             AsnStatus status, int lineCount, long expectedQuantity, long receivedQuantity,
+    public record AsnSummary(UUID id, OwnerRef owner, String asnNumber, String vendorName, String reference, LocalDate expectedDate,
+                             AsnStatus status, boolean blind, int lineCount, long expectedQuantity, long receivedQuantity,
                              Instant createdAt, Instant closedAt) {
         static AsnSummary of(Asn a) {
-            return new AsnSummary(a.getId(), a.getAsnNumber(), a.getVendorName(), a.getReference(), a.getExpectedDate(),
-                    a.getStatus(), a.getLines().size(),
+            return new AsnSummary(a.getId(), OwnerRef.of(a.getOwner()), a.getAsnNumber(), a.getVendorName(), a.getReference(), a.getExpectedDate(),
+                    a.getStatus(), a.isBlind(), a.getLines().size(),
                     a.getLines().stream().mapToLong(AsnLine::getExpectedQuantity).sum(),
                     a.getLines().stream().mapToLong(AsnLine::getReceivedQuantity).sum(), a.getCreatedAt(), a.getClosedAt());
         }
     }
 
-    /** An ASN with its lines, what has been received, and what has happened. */
-    public record AsnDetail(UUID id, String asnNumber, String vendorName, String reference, LocalDate expectedDate,
-                            AsnStatus status, long expectedQuantity, long receivedQuantity, List<LineView> lines,
+    /**
+     * An ASN with its lines, what has been received, and what has happened.
+     *
+     * @param blind nobody announced it, so nothing is expected on its lines
+     */
+    public record AsnDetail(UUID id, OwnerRef owner, String asnNumber, String vendorName, String reference, LocalDate expectedDate,
+                            AsnStatus status, boolean blind, long expectedQuantity, long receivedQuantity, List<LineView> lines,
                             List<ReceiptView> receipts, List<EventView> events, String closedBy, Instant createdAt,
                             Instant closedAt) {
     }

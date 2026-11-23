@@ -1,6 +1,9 @@
 package com.wms.users;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -9,11 +12,13 @@ import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.common.api.ApiException;
+import com.wms.facility.Site;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -28,9 +33,11 @@ public class DeviceSessionController {
     static final String COOKIE = "wms_device";
 
     private final DeviceSessionService service;
+    private final UnfinishedWork work;
 
-    public DeviceSessionController(DeviceSessionService service) {
+    public DeviceSessionController(DeviceSessionService service, UnfinishedWork work) {
         this.service = service;
+        this.work = work;
     }
 
     public record SignInRequest(
@@ -49,6 +56,22 @@ public class DeviceSessionController {
     @GetMapping
     public DeviceUser current(@CookieValue(name = COOKIE, required = false) String token) {
         return service.find(token).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Sign in to continue"));
+    }
+
+    public record GoRequest(UUID facilityId) {
+    }
+
+    /** Goes on working in another facility, once nothing is left half done in this one. */
+    @PutMapping("/facility")
+    public DeviceUser go(@CookieValue(name = COOKIE, required = false) String token, @RequestBody GoRequest body) {
+        DeviceUser user = current(token);
+        if (!user.facility().id().equals(body.facilityId())) {
+            List<String> unfinished = Site.in(user.facility().id(), () -> work.of(user.id()));
+            if (!unfinished.isEmpty()) {
+                throw ApiException.conflict("Finish this first: " + String.join(", ", unfinished) + ".", Map.of());
+            }
+        }
+        return service.go(token, body.facilityId());
     }
 
     @DeleteMapping

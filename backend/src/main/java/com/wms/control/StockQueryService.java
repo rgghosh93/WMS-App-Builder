@@ -24,6 +24,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.wms.common.Codes;
+import com.wms.control.ControlViews.AtFacility;
 import com.wms.control.ControlViews.ItemOnHand;
 import com.wms.control.ControlViews.ItemRef;
 import com.wms.control.ControlViews.OnHand;
@@ -69,19 +71,27 @@ public class StockQueryService {
         this.zones = zones;
     }
 
-    /** @param held only stock on hold or damaged */
-    public Page<StockView> stock(String q, boolean held, Pageable page) {
+    /**
+     * @param held  only stock on hold or damaged
+     * @param owner only of this owner; all if null
+     */
+    public Page<StockView> stock(String q, boolean held, UUID owner, Pageable page) {
         String where = MATCHES + (held ? " and i.status <> com.wms.inventory.InventoryStatus.AVAILABLE" : "");
         String like = like(q);
         // With nothing to search for, stock without a lot or an LPN must match too.
         boolean all = q == null || q.isBlank();
-        String filter = all ? (held ? "i.status <> com.wms.inventory.InventoryStatus.AVAILABLE" : "1 = 1") : where;
+        String filter = (all ? (held ? "i.status <> com.wms.inventory.InventoryStatus.AVAILABLE" : "1 = 1") : where)
+                + (owner == null ? "" : " and i.item.ownerId = :owner");
         TypedQuery<InventoryRecord> query = em.createQuery("select i " + FROM + " " + filter
                 + (held ? " order by i.heldAt desc nulls last, i.item.itemId, i.id" : " order by i.item.itemId, i.lotNumber, i.id"), InventoryRecord.class);
         TypedQuery<Long> count = em.createQuery("select count(i) " + FROM + " " + filter, Long.class);
         if (!all) {
             query.setParameter("q", like);
             count.setParameter("q", like);
+        }
+        if (owner != null) {
+            query.setParameter("owner", owner);
+            count.setParameter("owner", owner);
         }
         List<InventoryRecord> found = query.setFirstResult((int) page.getOffset()).setMaxResults(page.getPageSize()).getResultList();
         Map<UUID, Integer> reserved = reserved(found);
@@ -102,10 +112,17 @@ public class StockQueryService {
 
     // ---------- On hand ----------
 
-    /** Items there is stock of, with their lots. */
-    public Page<ItemOnHand> onHand(String q, Pageable page) {
+    /**
+     * Items there is stock of, with their lots.
+     *
+     * @param owner      only of this owner; all if null
+     * @param facilities to look at all of these at once, by id; null for the current one. Takes {@link com.wms.facility.Site#everywhere}
+     */
+    public Page<ItemOnHand> onHand(String q, UUID owner, Map<UUID, String> facilities, Pageable page) {
         boolean all = q == null || q.isBlank();
-        String where = " from Item t where exists (select 1 from InventoryRecord i where i.item = t)" + (all ? ""
+        String where = " from Item t where exists (select 1 from InventoryRecord i where i.item = t"
+                + (facilities == null ? "" : " and i.facilityId in :facilities") + ")"
+                + (owner == null ? "" : " and t.ownerId = :owner") + (all ? ""
                 : " and (lower(t.itemId) like :q escape '\\' or lower(t.description) like :q escape '\\'"
                         + " or exists (select 1 from InventoryRecord i where i.item = t and lower(i.lotNumber) like :q escape '\\'))");
         TypedQuery<Item> query = em.createQuery("select t" + where + " order by t.itemId", Item.class);
@@ -114,10 +131,19 @@ public class StockQueryService {
             query.setParameter("q", like(q));
             count.setParameter("q", like(q));
         }
+        if (owner != null) {
+            query.setParameter("owner", owner);
+            count.setParameter("owner", owner);
+        }
+        if (facilities != null) {
+            query.setParameter("facilities", facilities.keySet());
+            count.setParameter("facilities", facilities.keySet());
+        }
         List<Item> items = query.setFirstResult((int) page.getOffset()).setMaxResults(page.getPageSize()).getResultList();
         List<InventoryRecord> stock = items.isEmpty() ? List.of()
                 : em.createQuery("select i from InventoryRecord i where i.item in :items", InventoryRecord.class)
-                        .setParameter("items", items).getResultList();
+                        .setParameter("items", items).getResultStream()
+                        .filter(r -> facilities == null || facilities.containsKey(r.getFacilityId())).toList();
         Map<UUID, Integer> reserved = reserved(stock);
         Set<UUID> kept = zones.of(ZoneFunction.ALLOCATION, stock.stream().map(StockLedger::locationOf).filter(Objects::nonNull)
                 .map(Location::getId).collect(Collectors.toSet())).entrySet().stream()
@@ -133,7 +159,11 @@ public class StockQueryService {
             result.add(new ItemOnHand(ItemRef.of(item), sum(null, null, of, reserved, kept), lots.values().stream()
                     .map(l -> sum(l.getFirst().getLotNumber(), l.getFirst().getExpiryDate(), l, reserved, kept))
                     .sorted(Comparator.comparing(OnHand::expiryDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                            .thenComparing(OnHand::lotNumber, Comparator.nullsLast(Comparator.naturalOrder()))).toList()));
+                            .thenComparing(OnHand::lotNumber, Comparator.nullsLast(Comparator.naturalOrder()))).toList(),
+                    facilities == null ? null : facilities.entrySet().stream().sorted(Map.Entry.comparingByValue())
+                            .map(f -> new AtFacility(f.getValue(), sum(null, null, of.stream()
+                                    .filter(r -> r.getFacilityId().equals(f.getKey())).toList(), reserved, kept)))
+                            .filter(f -> f.total().total() > 0).toList()));
         }
         return new PageImpl<>(result, page, count.getSingleResult());
     }
@@ -172,10 +202,10 @@ public class StockQueryService {
     // ---------- History ----------
 
     /** Newest first. */
-    public Page<TransactionView> history(String q, StockTransaction.Type type, LocalDate from, LocalDate to, int page, int size) {
+    public Page<TransactionView> history(String q, String owner, StockTransaction.Type type, LocalDate from, LocalDate to, int page, int size) {
         Instant since = from == null ? null : from.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant before = to == null ? null : to.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        return history.search(q, type, since, before, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "number")))
+        return history.search(q, Codes.normalize(owner), type, since, before, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "number")))
                 .map(TransactionView::of);
     }
 

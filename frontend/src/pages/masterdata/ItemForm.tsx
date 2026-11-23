@@ -10,7 +10,9 @@ import {
 } from '../../api/items';
 import { DIMENSION_UOMS, WEIGHT_UOMS, type DimensionUom, type WeightUom } from '../../api/measure';
 import { ApiError, errorMessage } from '../../api/http';
+import { useOwners } from '../../api/owners';
 import { Drawer } from '../../components/Drawer';
+import { OwnerSelect } from '../../components/OwnerSelect';
 import { Field, sentenceCase } from '../../components/Field';
 import { positiveNumberError } from '../../forms/validation';
 import type { Uom } from '../../api/uoms';
@@ -63,6 +65,8 @@ const BARCODE_PATTERN = /^[\x21-\x7E]+$/;
 export function ItemForm({ item, units, onClose, onSaved, onDeleted }: ItemFormProps) {
   const isNew = item === null;
   const [values, setValues] = useState<FormValues>(() => initialValues(item));
+  const [owner, setOwner] = useState('');
+  const { several } = useOwners();
   const [packs, setPacks] = useState<PackValues[]>(() => packsFromItem(item?.uoms));
   const originalUnitIds = (item?.uoms ?? []).map((p) => p.uom.id);
   const baseCode = units.find((u) => u.base)?.uomCode ?? 'EA';
@@ -84,6 +88,7 @@ export function ItemForm({ item, units, onClose, onSaved, onDeleted }: ItemFormP
     const id = values.itemId.trim();
     if (!id) found.itemId = 'Enter an item ID';
     else if (!CODE_PATTERN.test(id)) found.itemId = "Use letters, numbers, '-', '_' or '.'";
+    if (isNew && several && !owner) found.owner = 'Choose whose it is';
     if (!values.description.trim()) found.description = 'Enter a description';
     const barcode = values.barcode.trim();
     if (barcode && !BARCODE_PATTERN.test(barcode)) found.barcode = 'No spaces or special characters';
@@ -116,6 +121,7 @@ export function ItemForm({ item, units, onClose, onSaved, onDeleted }: ItemFormP
     const anyDimension = DIMENSIONS.some(({ field }) => values[field].trim() !== '');
     const hasWeight = values.weight.trim() !== '';
     const input: ItemInput = {
+      owner: isNew && owner ? owner : undefined,
       itemId: values.itemId.trim(),
       description: values.description.trim(),
       status: values.status,
@@ -227,6 +233,11 @@ export function ItemForm({ item, units, onClose, onSaved, onDeleted }: ItemFormP
           </Field>
         </div>
 
+        {isNew ? (
+          <OwnerSelect id="item-owner" value={owner} onChange={setOwner} error={errors.owner} hint="It can't be changed later" />
+        ) : (
+          several && item.owner && <p className="muted">Owned by {item.owner.name}.</p>
+        )}
         <Field id="item-description" label="Description" error={errors.description}>
           <input
             id="item-description"

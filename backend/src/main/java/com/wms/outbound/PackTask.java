@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.location.Location;
 import com.wms.users.AppUser;
@@ -32,7 +33,7 @@ import jakarta.persistence.Version;
  */
 @Entity
 @Table(name = "pack_tasks")
-public class PackTask {
+public class PackTask extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -129,21 +130,36 @@ public class PackTask {
         touch();
     }
 
-    /** Nothing is left to pack and every carton is closed. */
-    boolean isDone() {
-        return details.stream().allMatch(d -> d.remaining() == 0)
-                && cartons.stream().allMatch(c -> c.getStatus() == CartonStatus.CLOSED);
+    /** Nothing in it is to be packed any more. */
+    void cancel() {
+        status = PackTaskStatus.CANCELLED;
+        completedAt = Instant.now();
+        touch();
     }
 
-    /** The orders in the container, in detail order. */
+    /** Nothing is left to pack and no carton is open. */
+    boolean isDone() {
+        return details.stream().allMatch(d -> d.remaining() == 0)
+                && cartons.stream().noneMatch(c -> c.getStatus() == CartonStatus.OPEN);
+    }
+
+    /** Whether it ended with nothing packed or missing: all of it was called off. */
+    boolean isCalledOff() {
+        return details.stream().allMatch(d -> d.getPackedQuantity() == 0 && d.getShortQuantity() == 0);
+    }
+
     /** As urgent as the most urgent of its orders. */
     int priority() {
         return orders().stream().mapToInt(OutboundOrder::getPriority).min().orElse(9);
     }
 
+    /** The orders in the container, in detail order. Those cancelled or undone are left out, unless that is all there is. */
     public List<OutboundOrder> orders() {
         Map<UUID, OutboundOrder> orders = new LinkedHashMap<>();
-        details.forEach(d -> orders.putIfAbsent(d.getOrder().getId(), d.getOrder()));
+        details.stream().filter(d -> d.getCancelledQuantity() == 0).forEach(d -> orders.putIfAbsent(d.getOrder().getId(), d.getOrder()));
+        if (orders.isEmpty()) {
+            details.forEach(d -> orders.putIfAbsent(d.getOrder().getId(), d.getOrder()));
+        }
         return List.copyOf(orders.values());
     }
 

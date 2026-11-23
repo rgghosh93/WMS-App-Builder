@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Printer, XCircle } from 'lucide-react';
 import { asnStatusLabel, cancelAsn, getAsn, type AsnDetail, type AsnLine } from '../../api/asns';
 import { errorMessage } from '../../api/http';
+import { OwnerFact } from '../../components/OwnerSelect';
 import { inventoryStatusLabel } from '../../api/inventory';
 import { statusClass } from '../../api/orders';
 import { useCan } from '../../session/SessionContext';
@@ -80,7 +81,7 @@ export function AsnDetailPage() {
             <span className="code">{asn.asnNumber}</span>
             <span className={`badge badge--lg badge--asn-${statusClass(asn.status)}`}>{asnStatusLabel(asn.status)}</span>
           </h1>
-          <p className="muted">{asn.vendorName}</p>
+          <p className="muted">{asn.blind ? `${asn.vendorName} · received without an ASN` : asn.vendorName}</p>
         </div>
         <div className="button-row">
           {lpnCount > 0 && (
@@ -118,6 +119,7 @@ export function AsnDetailPage() {
       )}
 
       <dl className="facts">
+        <OwnerFact owner={asn.owner} />
         <div>
           <dt>Vendor</dt>
           <dd>{asn.vendorName}</dd>
@@ -126,14 +128,16 @@ export function AsnDetailPage() {
           <dt>Reference</dt>
           <dd>{asn.reference ?? <span className="muted">—</span>}</dd>
         </div>
-        <div>
-          <dt>Expected</dt>
-          <dd>{asn.expectedDate ? formatDay(asn.expectedDate) : <span className="muted">—</span>}</dd>
-        </div>
+        {!asn.blind && (
+          <div>
+            <dt>Expected</dt>
+            <dd>{asn.expectedDate ? formatDay(asn.expectedDate) : <span className="muted">—</span>}</dd>
+          </div>
+        )}
         <div>
           <dt>Received</dt>
           <dd>
-            {asn.receivedQuantity.toLocaleString()} of {asn.expectedQuantity.toLocaleString()} EA
+            {asn.receivedQuantity.toLocaleString()} {asn.blind ? '' : `of ${asn.expectedQuantity.toLocaleString()} `}EA
           </dd>
         </div>
         <div>
@@ -163,15 +167,19 @@ export function AsnDetailPage() {
                 <th scope="col">Item</th>
                 {anyLpn && <th scope="col">Vendor's LPN</th>}
                 <th scope="col">Lot / expiry</th>
-                <th scope="col" className="num">
-                  Expected
-                </th>
+                {!asn.blind && (
+                  <th scope="col" className="num">
+                    Expected
+                  </th>
+                )}
                 <th scope="col" className="num">
                   Received
                 </th>
-                <th scope="col" className="num">
-                  Difference
-                </th>
+                {!asn.blind && (
+                  <th scope="col" className="num">
+                    Difference
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -187,11 +195,13 @@ export function AsnDetailPage() {
                     {l.lotNumber ? <span className="code">{l.lotNumber}</span> : <span className="muted">—</span>}
                     {l.expiryDate && <span className="muted cell__sub">expires {formatDay(l.expiryDate)}</span>}
                   </td>
-                  <td className="num">{l.expectedQuantity.toLocaleString()} EA</td>
+                  {!asn.blind && <td className="num">{l.expectedQuantity.toLocaleString()} EA</td>}
                   <td className="num">{l.receivedQuantity.toLocaleString()} EA</td>
-                  <td className="num">
-                    <Difference line={l} closed={closed} />
-                  </td>
+                  {!asn.blind && (
+                    <td className="num">
+                      <Difference line={l} closed={closed} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -3,6 +3,7 @@ package com.wms.masterdata.location;
 import com.wms.common.measure.DimensionUom;
 import com.wms.common.measure.VolumeUom;
 import com.wms.common.measure.WeightUom;
+import com.wms.facility.FacilityRecord;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -20,7 +21,7 @@ import jakarta.persistence.Version;
 /** A place where inventory is stored and/or acted on. */
 @Entity
 @Table(name = "locations")
-public class Location {
+public class Location extends FacilityRecord {
 
     @Id
     private UUID id;

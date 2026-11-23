@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { createOrder, type OrderDetail, type OrderInput } from '../../api/orders';
 import { listItems, type Item } from '../../api/items';
+import { useOwners } from '../../api/owners';
 import { ApiError, errorMessage } from '../../api/http';
 import { Drawer } from '../../components/Drawer';
 import { Field, sentenceCase } from '../../components/Field';
+import { OwnerSelect } from '../../components/OwnerSelect';
 import { SearchPicker } from '../../components/SearchPicker';
 import { positiveIntegerError } from '../../forms/validation';
 import type { ShipTo } from '../../api/shipping';
@@ -39,6 +41,8 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
   const [allocateNow, setAllocateNow] = useState(true);
   const [lines, setLines] = useState<LineValues[]>(() => [newLine()]);
   const [address, setAddress] = useState(EMPTY_ADDRESS);
+  const [owner, setOwner] = useState('');
+  const { several } = useOwners();
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,6 +62,7 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
   const validate = (): Errors => {
     const found: Errors = {};
     if (orderNumber.trim() && !CODE_PATTERN.test(orderNumber.trim())) found.orderNumber = "Use letters, numbers, '-', '_' or '.'";
+    if (several && !owner) found.owner = 'Choose whose it is';
     if (!customer.trim()) found.customerName = 'Enter the customer';
     // The address is optional here, but once started it has to be complete.
     if (!isBlankAddress(address)) {
@@ -80,6 +85,7 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
     if (Object.keys(found).length > 0) return;
 
     const input: OrderInput = {
+      owner: owner || undefined,
       orderNumber: orderNumber.trim() || null,
       customerName: customer.trim(),
       requestedShipDate: shipDate || null,
@@ -107,7 +113,7 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
   };
 
   const searchItems = (text: string, signal: AbortSignal) =>
-    listItems({ q: text, status: 'ACTIVE', page: 0, size: 8, sort: 'itemId', dir: 'asc' }, signal).then((p) => p.content);
+    listItems({ q: text, status: 'ACTIVE', owner, page: 0, size: 8, sort: 'itemId', dir: 'asc' }, signal).then((p) => p.content);
 
   const footer = (
     <div className="button-row button-row--end">
@@ -140,6 +146,17 @@ export function NewOrderForm({ onClose, onCreated }: NewOrderFormProps) {
           </span>
         </label>
 
+        <OwnerSelect
+          id="order-owner"
+          value={owner}
+          error={errors.owner}
+          onChange={(code) => {
+            setOwner(code);
+            // Items are their owner's, so those chosen don't fit another.
+            setLines((current) => current.map((l) => ({ ...l, item: null })));
+            clear('owner');
+          }}
+        />
         <div className="grid grid--2">
           <Field id="order-customer" label="Customer" error={errors.customerName}>
             <input

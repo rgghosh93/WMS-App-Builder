@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.carrier.Carrier;
 import com.wms.masterdata.location.Location;
 import com.wms.users.AppUser;
@@ -26,7 +27,7 @@ import jakarta.persistence.Version;
 /** What leaves with one carrier from one dock door. Closing it ships everything loaded. */
 @Entity
 @Table(name = "manifests")
-public class Manifest {
+public class Manifest extends FacilityRecord {
 
     @Id
     private UUID id;

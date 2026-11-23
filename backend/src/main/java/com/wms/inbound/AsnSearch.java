@@ -3,6 +3,7 @@ package com.wms.inbound;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import org.springframework.data.jpa.domain.Specification;
 
@@ -17,8 +18,9 @@ import jakarta.persistence.criteria.Subquery;
  * @param q      free text matched (contains, any case) against ASN number, vendor, reference, and the item and
  *               LPN of its lines and the LPNs received
  * @param status exact status
+ * @param owner  exact owner (internal id)
  */
-public record AsnSearch(String q, AsnStatus status) {
+public record AsnSearch(String q, AsnStatus status, UUID owner) {
 
     Specification<Asn> toSpecification() {
         return (root, query, cb) -> {
@@ -43,6 +45,9 @@ public record AsnSearch(String q, AsnStatus status) {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (owner != null) {
+                predicates.add(cb.equal(root.get("ownerId"), owner));
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

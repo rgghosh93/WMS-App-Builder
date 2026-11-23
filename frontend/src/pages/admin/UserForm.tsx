@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ACTIVE_STATUSES, type ActiveStatus } from '../../api/containerTypes';
+import { listFacilities, type Facility } from '../../api/facilities';
 import { ApiError, errorMessage } from '../../api/http';
 import {
   createUser,
@@ -42,6 +43,8 @@ export function UserForm({ id, onClose, onSaved, onDeleted }: UserFormProps) {
   const [status, setStatus] = useState<ActiveStatus>('ACTIVE');
   const [roles, setRoles] = useState<Role[]>([]);
   const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [facilityIds, setFacilityIds] = useState<string[]>([]);
   const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<Errors>({});
@@ -61,6 +64,15 @@ export function UserForm({ id, onClose, onSaved, onDeleted }: UserFormProps) {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    listFacilities(controller.signal).then(
+      (found) => Array.isArray(found) && setFacilities(found),
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     if (!id) return;
     const controller = new AbortController();
     getUser(id, controller.signal)
@@ -70,6 +82,7 @@ export function UserForm({ id, onClose, onSaved, onDeleted }: UserFormProps) {
         setName(loaded.displayName);
         setStatus(loaded.status);
         setRoleIds(loaded.roles.map((r) => r.id));
+        setFacilityIds((loaded.facilities ?? []).map((f) => f.id));
       })
       .catch((error) => {
         if (!controller.signal.aborted) setFormError(errorMessage(error));
@@ -110,7 +123,7 @@ export function UserForm({ id, onClose, onSaved, onDeleted }: UserFormProps) {
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length > 0) return;
-    const input = { userCode: code.trim(), displayName: name.trim(), status, roleIds };
+    const input = { userCode: code.trim(), displayName: name.trim(), status, roleIds, facilityIds };
     await run(async () => {
       if (id) onSaved(await updateUser(id, { ...input, version: user!.version }), false);
       else onSaved(await createUser({ ...input, pin: pin || null, password: password || null }), true);
@@ -281,6 +294,27 @@ export function UserForm({ id, onClose, onSaved, onDeleted }: UserFormProps) {
                 </label>
               ))}
             </fieldset>
+            {facilities.length > 1 && (
+              <fieldset className="fieldset fieldset--stack">
+                <legend>Works in</legend>
+                <p className="field__hint">{facilityIds.length === 0 ? 'Every facility, as none is chosen.' : 'Only the facilities chosen.'}</p>
+                {errors.facilityIds && <p className="field__error">{errors.facilityIds}</p>}
+                {facilities
+                  .filter((f) => f.status === 'ACTIVE' || facilityIds.includes(f.id))
+                  .map((f) => (
+                    <label key={f.id} className="check">
+                      <input
+                        type="checkbox"
+                        checked={facilityIds.includes(f.id)}
+                        onChange={(e) => setFacilityIds((ids) => (e.target.checked ? [...ids, f.id] : ids.filter((x) => x !== f.id)))}
+                      />
+                      <span className="check__label">
+                        {f.code} · {f.name}
+                      </span>
+                    </label>
+                  ))}
+              </fieldset>
+            )}
             {!id && (
               <fieldset className="fieldset fieldset--stack">
                 <legend>Signing in</legend>

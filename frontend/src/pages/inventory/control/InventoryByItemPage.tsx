@@ -2,6 +2,9 @@ import { Fragment, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { listOnHand, type ItemOnHand, type OnHand } from '../../../api/control';
+import { useOwners } from '../../../api/owners';
+import { OwnerFilter } from '../../../components/OwnerSelect';
+import { useSession } from '../../../session/SessionContext';
 import { ListPage } from '../../../components/ListPage';
 import { useList } from '../../../components/useList';
 import { formatDay } from '../../outbound/OrdersPage';
@@ -9,6 +12,9 @@ import { formatDay } from '../../outbound/OrdersPage';
 /** How much there is of each item, and of each lot of it. */
 export function InventoryByItemPage() {
   const list = useList<ItemOnHand>(listOnHand);
+  const { several } = useOwners();
+  const facilities = useSession()?.user.facilities ?? [];
+  const everywhere = list.params.get('everywhere') === 'true';
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setOpen((current) => {
@@ -24,6 +30,17 @@ export function InventoryByItemPage() {
       intro="Available is what an order could get now: good, unexpired, in storage and not reserved."
       searchLabel="Search items"
       searchPlaceholder="Search item, description or lot…"
+      filters={
+        <>
+          <OwnerFilter value={list.params.get('owner') ?? ''} onChange={(owner) => list.update({ owner })} />
+          {facilities.length > 1 && (
+            <label className="check check--inline">
+              <input type="checkbox" checked={everywhere} onChange={(e) => list.update({ everywhere: e.target.checked ? 'true' : '' })} />
+              <span className="check__label">All facilities</span>
+            </label>
+          )}
+        </>
+      }
       noun={['item', 'items']}
       list={list}
       empty="No stock matches your search."
@@ -41,7 +58,7 @@ export function InventoryByItemPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ item, total, lots }) => (
+            {rows.map(({ item, total, lots, facilities: at }) => (
               <Fragment key={item.id}>
                 <tr>
                   <th scope="row">
@@ -59,10 +76,22 @@ export function InventoryByItemPage() {
                     <Link className="code" to={`/inventory/history?q=${encodeURIComponent(item.itemId)}`} title="History">
                       {item.itemId}
                     </Link>
-                    <span className="muted cell__sub">{item.description}</span>
+                    <span className="muted cell__sub">
+                      {several && item.owner && `${item.owner} · `}
+                      {item.description}
+                    </span>
                   </th>
                   <Numbers of={total} />
                 </tr>
+                {everywhere &&
+                  (at ?? []).map((f) => (
+                    <tr key={f.facility} className="row--sub">
+                      <td>
+                        In <span className="code">{f.facility}</span>
+                      </td>
+                      <Numbers of={f.total} />
+                    </tr>
+                  ))}
                 {open.has(item.id) &&
                   lots.map((lot, i) => (
                     <tr key={i} className="row--sub">

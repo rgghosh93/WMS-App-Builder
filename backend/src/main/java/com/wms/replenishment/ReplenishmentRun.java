@@ -13,6 +13,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.Facility;
+import com.wms.facility.FacilityRepository;
+import com.wms.facility.Site;
 import com.wms.inventory.WaitingOrders;
 
 /**
@@ -82,17 +85,21 @@ public class ReplenishmentRun {
     @ConditionalOnProperty(name = "wms.replenishment.automatic", havingValue = "true", matchIfMissing = true)
     static class Automatic {
         private final ReplenishmentRun run;
+        private final FacilityRepository facilities;
 
-        Automatic(ReplenishmentRun run) {
+        Automatic(ReplenishmentRun run, FacilityRepository facilities) {
             this.run = run;
+            this.facilities = facilities;
         }
 
         @Scheduled(fixedDelayString = "${wms.replenishment.interval-seconds:60}", initialDelayString = "${wms.replenishment.interval-seconds:60}",
                 timeUnit = TimeUnit.SECONDS)
         void often() {
-            Result result = run.all();
-            if (result.quantity() > 0) {
-                log.info("Planned replenishment of {} EA", result.quantity());
+            for (Facility facility : facilities.findByStatusOrderByCodeAsc(ActiveStatus.ACTIVE)) {
+                Result result = Site.in(facility.getId(), run::all);
+                if (result.quantity() > 0) {
+                    log.info("Planned replenishment of {} EA in {}", result.quantity(), facility.getCode());
+                }
             }
         }
     }

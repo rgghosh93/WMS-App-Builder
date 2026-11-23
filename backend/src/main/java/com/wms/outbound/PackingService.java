@@ -98,10 +98,15 @@ public class PackingService {
 
     /** Creates the packing task for a container just dropped at a station. */
     void createFor(PickTask pickTask, Location station) {
+        // What was picked for an order since cancelled or undone isn't packed: it goes back to storage from here.
+        List<PickTaskDetail> picked = pickTask.getDetails().stream()
+                .filter(d -> d.getPickedQuantity() > 0 && d.getStatus() != PickDetailStatus.CANCELLED).toList();
+        if (picked.isEmpty()) {
+            return;
+        }
         PackTask task = new PackTask(UUID.randomUUID(), "PK%06d".formatted(tasks.nextTaskNumber()), pickTask,
                 pickTask.getToContainer(), station);
-        pickTask.getDetails().stream()
-                .filter(d -> d.getPickedQuantity() > 0)
+        picked.stream()
                 .sorted(Comparator.comparing((PickTaskDetail d) -> d.getOrder().getOrderNumber())
                         .thenComparing(d -> d.getLine().getLineNumber())
                         .thenComparing(PickTaskDetail::getDetailNumber))
@@ -355,9 +360,11 @@ public class PackingService {
     }
 
     static boolean canPackAsIs(PackTask task) {
-        return task.getStatus() != PackTaskStatus.COMPLETED && !task.getContainer().isPermanent()
+        return task.getStatus().isOpen() && !task.getContainer().isPermanent()
                 && task.getContainer().getContainerType().getCategory() == ContainerCategory.CARTON
                 && task.getCartons().isEmpty() && task.orders().size() == 1
+                // What an order cancelled meanwhile left in it would go too.
+                && task.getDetails().stream().allMatch(d -> d.getCancelledQuantity() == 0)
                 && task.getDetails().stream().anyMatch(d -> d.remaining() > 0);
     }
 
@@ -488,7 +495,7 @@ public class PackingService {
             task.complete();
             tasks.flush();
             boolean shipsAsIs = task.getCartons().stream()
-                    .anyMatch(c -> c.getContainer().getId().equals(task.getContainer().getId()));
+                    .anyMatch(c -> c.getStatus() == CartonStatus.CLOSED && c.getContainer().getId().equals(task.getContainer().getId()));
             if (!shipsAsIs) {
                 outbound.finish(task.getContainer());
             }
@@ -511,6 +518,10 @@ public class PackingService {
         PackTask task = load(taskId);
         if (task.getStatus() == PackTaskStatus.COMPLETED) {
             throw ApiException.conflict(task.getTaskNumber() + " is already packed.", Map.of());
+        }
+        if (task.getStatus() == PackTaskStatus.CANCELLED) {
+            throw ApiException.conflict(task.getTaskNumber() + " is called off: what is in " + task.getContainer().getLpnId()
+                    + " goes back to storage.", Map.of());
         }
         if (task.getAssignedTo() == null) {
             throw ApiException.conflict("Scan " + task.getContainer().getLpnId() + " to start packing it.", Map.of());

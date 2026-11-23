@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,11 @@ import com.wms.common.Codes;
 import com.wms.common.api.ApiException;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.item.ItemRepository;
+import com.wms.masterdata.owner.Owner;
+import com.wms.masterdata.owner.OwnerRef;
+import com.wms.masterdata.owner.Owners;
+import com.wms.facility.Site;
+import com.wms.inventory.StockFreed;
 import com.wms.outbound.OrderEvent.Type;
 import com.wms.outbound.OutboundViews.AllocationView;
 import com.wms.outbound.OutboundViews.EventView;
@@ -26,12 +32,14 @@ import com.wms.outbound.OutboundViews.LineView;
 import com.wms.outbound.OutboundViews.OrderDetail;
 import com.wms.outbound.OutboundViews.OrderSummary;
 import com.wms.outbound.OutboundViews.TaskView;
+import com.wms.outbound.Undoing.Undone;
 
 @Service
 @Transactional
 public class OrderService {
 
     private final OrderRepository orders;
+    private final Owners owners;
     private final AllocationRepository allocations;
     static final int MAX_BATCH = 50;
 
@@ -40,7 +48,8 @@ public class OrderService {
     private final OrderEventRepository events;
     private final ItemRepository items;
     private final AllocationService allocationService;
-    private final OutboundContainers outboundContainers;
+    private final Undoing undoing;
+    private final ApplicationEventPublisher publisher;
     private final PackingService packing;
     private final ShippingService shipping;
     private final PackTaskDetailRepository packDetails;
@@ -48,9 +57,10 @@ public class OrderService {
 
     public OrderService(OrderRepository orders, AllocationRepository allocations, PickTaskRepository tasks,
                         PickTaskDetailRepository taskDetails, OrderEventRepository events, ItemRepository items,
-                        AllocationService allocationService, OutboundContainers outboundContainers,
+                        AllocationService allocationService, Undoing undoing, ApplicationEventPublisher publisher,
                         PackingService packing, ShippingService shipping, PackTaskDetailRepository packDetails,
-                        @Value("${wms.outbound.auto-allocate:true}") boolean autoAllocate) {
+                        @Value("${wms.outbound.auto-allocate:true}") boolean autoAllocate, Owners owners) {
+        this.owners = owners;
         this.orders = orders;
         this.allocations = allocations;
         this.tasks = tasks;
@@ -58,7 +68,8 @@ public class OrderService {
         this.events = events;
         this.items = items;
         this.allocationService = allocationService;
-        this.outboundContainers = outboundContainers;
+        this.undoing = undoing;
+        this.publisher = publisher;
         this.packing = packing;
         this.shipping = shipping;
         this.packDetails = packDetails;
@@ -76,7 +87,7 @@ public class OrderService {
         }
         return page.map(o -> {
             List<OrderLine> open = o.getLines().stream().filter(l -> l.getStatus() != LineStatus.CANCELLED).toList();
-            return new OrderSummary(o.getId(), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
+            return new OrderSummary(o.getId(), OwnerRef.of(o.getOwner()), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
                     o.getPriority(), o.getStatus(), o.getLines().size(),
                     open.stream().mapToLong(OrderLine::neededQuantity).sum(),
                     open.stream().mapToLong(OrderLine::getAllocatedQuantity).sum(),
@@ -145,12 +156,14 @@ public class OrderService {
         String number = request.orderNumber() == null || request.orderNumber().isBlank()
                 ? "SO%06d".formatted(orders.nextOrderNumber())
                 : Codes.normalize(request.orderNumber());
-        if (orders.findByOrderNumber(number).isPresent()) {
+        Owner owner = owners.forNew(request.owner());
+        if (orders.findByOwnerIdAndOrderNumber(owner.getId(), number).isPresent()) {
             throw ApiException.conflict("An order with this number already exists",
                     Map.of("orderNumber", "already used by another order"));
         }
 
         OutboundOrder order = new OutboundOrder(UUID.randomUUID(), number);
+        order.setOwner(owner);
         order.setCustomerName(request.customerName().trim());
         order.setRequestedShipDate(request.requestedShipDate());
         order.setShipTo(request.shipTo() == null ? null : request.shipTo().tidied());
@@ -160,7 +173,7 @@ public class OrderService {
         for (int i = 0; i < requested.size(); i++) {
             OrderRequest.Line line = requested.get(i);
             String prefix = "lines[" + i + "].";
-            Item item = items.findByItemId(Codes.normalize(line.itemId())).orElse(null);
+            Item item = items.findByOwnerIdAndItemId(owner.getId(), Codes.normalize(line.itemId())).orElse(null);
             String lot = line.requestedLot() == null || line.requestedLot().isBlank() ? null : line.requestedLot().trim();
             if (item == null) {
                 errors.put(prefix + "itemId", "item " + line.itemId().trim() + " not found");
@@ -249,42 +262,62 @@ public class OrderService {
     public record BatchAllocation(TaskView task, List<TaskView> tasks, List<OutboundViews.OrderRef> orders) {
     }
 
-    /** Cancels an order: releases its stock and cancels its open picks. */
+    /**
+     * Cancels an order, whatever was done for it, unless some of it has shipped. Its stock is let go of; what was picked has
+     * to be moved back to storage.
+     */
     public OrderDetail cancel(UUID id) {
-        OutboundOrder order = load(id);
+        OutboundOrder order = lock(id);
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is already cancelled.", Map.of());
         }
-        if (order.anyPicked()) {
-            throw ApiException.conflict("Order " + order.getOrderNumber()
-                    + " can't be cancelled: some of it has already been picked.", Map.of());
-        }
-        // On a batch task only this order's details are cancelled; the other orders still get picked.
-        List<String> touched = new ArrayList<>();
-        int cancelledDetails = 0;
-        for (PickTask task : tasks.findByOrderId(id)) {
-            int n = task.cancelFor(order);
-            if (n > 0) {
-                touched.add(task.getTaskNumber());
-                if (task.getStatus() == PickTaskStatus.CANCELLED) {
-                    outboundContainers.release(task);
-                }
-                cancelledDetails += n;
-            }
-        }
-        tasks.flush();
-        List<Allocation> reserved = allocations.findByLine_Order_Id(id);
-        long released = reserved.stream().mapToLong(Allocation::getQuantity).sum();
-        allocations.deleteAll(reserved);
+        requireNothingShipped(order, "cancelled");
+        Undone undone = undoing.undo(order);
         order.getLines().forEach(OrderLine::cancel);
         order.refreshStatus();
-        String what = touched.isEmpty() ? "no open picks"
-                : "%d detail%s of pick task%s %s".formatted(cancelledDetails, cancelledDetails == 1 ? "" : "s",
-                        touched.size() == 1 ? "" : "s", String.join(", ", touched));
-        events.save(new OrderEvent(order, Type.CANCELLED,
-                "Order cancelled: released %d EA and cancelled %s".formatted(released, what)));
+        events.save(new OrderEvent(order, Type.CANCELLED, "Order cancelled: " + inWords(undone)));
         orders.flush();
         return detail(order);
+    }
+
+    /**
+     * Takes an order back to New: not allocated, picked or packed. It stays there until someone allocates it again. What was
+     * picked has to be moved back to storage.
+     */
+    public OrderDetail undo(UUID id) {
+        OutboundOrder order = lock(id);
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw ApiException.conflict("Order " + order.getOrderNumber() + " is cancelled.", Map.of());
+        }
+        requireNothingShipped(order, "undone");
+        if (!order.anyAllocated()) {
+            throw ApiException.conflict("Nothing is allocated or picked for " + order.getOrderNumber() + ".", Map.of());
+        }
+        boolean picked = order.anyPicked();
+        Undone undone = undoing.undo(order);
+        order.getLines().stream().filter(l -> l.getStatus() != LineStatus.CANCELLED).forEach(OrderLine::startOver);
+        order.refreshStatus();
+        events.save(new OrderEvent(order, Type.UNDONE, (picked ? "Picking undone: " : "Allocation undone: ") + inWords(undone)));
+        orders.flush();
+        return detail(order);
+    }
+
+    private static void requireNothingShipped(OutboundOrder order, String what) {
+        if (order.anyShipped()) {
+            throw ApiException.conflict("Order " + order.getOrderNumber() + " can't be " + what + ": some of it has shipped.", Map.of());
+        }
+    }
+
+    private static String inWords(Undone undone) {
+        String picks = undone.tasks().isEmpty() ? "no open picks"
+                : "%d detail%s of pick task%s %s".formatted(undone.openPicks(), undone.openPicks() == 1 ? "" : "s",
+                        undone.tasks().size() == 1 ? "" : "s", String.join(", ", undone.tasks()));
+        return "released %d EA and cancelled %s%s".formatted(undone.released(), picks,
+                undone.left() == null ? "" : ". To move back to storage: " + undone.left());
+    }
+
+    private OutboundOrder lock(UUID id) {
+        return orders.findLocked(id).orElseThrow(() -> ApiException.notFound("Order not found"));
     }
 
     /**
@@ -292,7 +325,7 @@ public class OrderService {
      * pick tasks released. What is already picked is still packed and shipped.
      */
     public OrderDetail closeShort(UUID id) {
-        OutboundOrder order = load(id);
+        OutboundOrder order = lock(id);
         if (order.getStatus() == OrderStatus.CANCELLED) {
             throw ApiException.conflict("Order " + order.getOrderNumber() + " is already cancelled.", Map.of());
         }
@@ -316,6 +349,7 @@ public class OrderService {
         }
         tasks.flush();
         long released = unpicked.stream().mapToLong(Allocation::getQuantity).sum();
+        unpicked.forEach(a -> publisher.publishEvent(new StockFreed(Site.current(), a.getInventory().getItem().getId())));
         allocations.deleteAll(unpicked);
         int closed = order.getLines().stream().filter(l -> l.getStatus() != LineStatus.CANCELLED)
                 .mapToInt(OrderLine::closeShort).sum();
@@ -331,7 +365,7 @@ public class OrderService {
     }
 
     private OrderDetail detail(OutboundOrder o) {
-        return new OrderDetail(o.getId(), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
+        return new OrderDetail(o.getId(), OwnerRef.of(o.getOwner()), o.getOrderNumber(), o.getCustomerName(), o.getRequestedShipDate(),
                 o.getPriority(), o.getStatus(), o.getShipTo(),
                 o.getLines().stream().map(LineView::of).toList(),
                 allocationViews(allocations.findByLine_Order_IdOrderByCreatedAtAsc(o.getId())).stream()

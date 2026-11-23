@@ -219,6 +219,83 @@ class ReceivingTest {
                 .andExpect(jsonPath("$.receivedQuantity").value(0));
     }
 
+    // ---------- Blind ----------
+
+    @Test
+    void whatNobodyAnnouncedCanBeReceived() throws Exception {
+        UUID start = UUID.randomUUID();
+        JsonNode begun = null;
+        for (int i = 0; i < 2; i++) {
+            begun = body(blind(start, "Acme", "PO-77").andExpect(jsonPath("$.asnNumber", matchesPattern("BR\\d{6}")))
+                    .andExpect(jsonPath("$.blind").value(true)).andExpect(jsonPath("$.status").value("RECEIVING"))
+                    .andExpect(jsonPath("$.vendorName").value("Acme")).andExpect(jsonPath("$.lines", hasSize(0))));
+        }
+        String id = begun.get("id").asString();
+        String number = begun.get("asnNumber").asString();
+        call(get("/api/rf/receiving/asns"), ann).andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].blind").value(true));
+        call(get("/api/rf/receiving/blind/" + id + "/items/111006"), ann).andExpect(jsonPath("$.itemId").value("SKU-BAR"))
+                .andExpect(jsonPath("$.lotControlled").value(true));
+        call(get("/api/rf/receiving/blind/" + id + "/items/NOPE"), ann).andExpect(status().isBadRequest());
+
+        checkLpn(id, "LP1").andExpect(jsonPath("$.kind").value("NEW"));
+        receive(id, "LP1", "NOPE", 1, Map.of()).andExpect(jsonPath("$.errors.itemBarcode").exists());
+        receive(id, "LP1", "111006", 2, Map.of()).andExpect(jsonPath("$.errors.lotNumber").exists());
+        receive(id, "LP1", "111006", 2, Map.of("lotNumber", "L1", "expiryDate", TODAY.plusDays(90))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines", hasSize(1))).andExpect(jsonPath("$.receivedQuantity").value(12))
+                .andExpect(jsonPath("$.expectedQuantity").value(0)).andExpect(jsonPath("$.lines[0].remaining").value(0))
+                .andExpect(jsonPath("$.events[*].message", hasItem("Ann Lee received 12 EA of SKU-BAR lot L1 into LP1 at " + RCV)));
+        UUID again = UUID.randomUUID();
+        for (int i = 0; i < 2; i++) {
+            receive(id, "LP1", "111000", 3, Map.of("requestId", again, "lotNumber", "L1", "expiryDate", TODAY.plusDays(90))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines", hasSize(1))).andExpect(jsonPath("$.receivedQuantity").value(15));
+        }
+        receive(id, "LP1", "111000", 1, Map.of("lotNumber", "L2", "expiryDate", TODAY.plusDays(90))).andExpect(jsonPath("$.lines", hasSize(2)));
+        receive(id, "LP2", "222000", 2, Map.of("serialNumbers", List.of("D1", "D2"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines", hasSize(3))).andExpect(jsonPath("$.receipts[0].quantity").value(1));
+        assertThat(stock("LP1")).extracting(InventoryRecord::getQuantity).containsExactlyInAnyOrder(15, 1);
+
+        JsonNode detail = body(call(get("/api/asns/" + id), null));
+        call(post("/api/rf/receiving/receipts/" + detail.get("receipts").get(0).get("id").asString() + "/reverse"), ann)
+                .andExpect(jsonPath("$.receivedQuantity").value(17));
+        call(get("/api/putaway/tasks"), null).andExpect(jsonPath("$.totalElements").value(2));
+        close(id, false).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.events[*].message", hasItem("Ann Lee closed it: 17 EA received")));
+        receive(id, "LP3", "333000", 1, Map.of()).andExpect(status().isConflict());
+        call(get("/api/asns").param("q", number), null).andExpect(jsonPath("$.content[0].blind").value(true));
+        call(get("/api/inventory/history").param("q", number), null).andExpect(status().isOk());
+    }
+
+    @Test
+    void anAnnouncedLpnIsntReceivedBlind() throws Exception {
+        asn("ASN-1", line("SKU-CUP", 10, null, null, "VPLT-1"));
+        String id = body(blind(UUID.randomUUID(), null, null)).get("id").asString();
+        checkLpn(id, "VPLT-1").andExpect(jsonPath("$.errors.lpnId").value("VPLT-1 is announced on ASN-1. Receive it there"));
+        receive(id, "VPLT-1", "333000", 1, Map.of()).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aBlindReceiptOfNothingIsDiscarded() throws Exception {
+        String announced = asn("ASN-1", line("SKU-CUP", 10));
+        call(post("/api/rf/receiving/blind/" + announced + "/discard"), ann).andExpect(status().isConflict());
+        JsonNode begun = body(blind(UUID.randomUUID(), " ", null).andExpect(jsonPath("$.vendorName").value("Vendor not known")));
+        String id = begun.get("id").asString();
+        close(id, true).andExpect(status().isConflict());
+        call(post("/api/rf/receiving/blind/" + id + "/discard"), ann).andExpect(jsonPath("$.status").value("CANCELLED"));
+        String other = body(blind(UUID.randomUUID(), null, null)).get("id").asString();
+        receive(other, "LP1", "333000", 1, Map.of()).andExpect(status().isOk());
+        call(post("/api/rf/receiving/blind/" + other + "/discard"), ann).andExpect(status().isConflict());
+        blind(null, null, null).andExpect(status().isBadRequest());
+        blind(UUID.randomUUID(), "V".repeat(121), null).andExpect(jsonPath("$.errors.vendorName").exists());
+    }
+
+    @Test
+    void inactiveItemsArentReceivedBlind() throws Exception {
+        items.findAllByItemId("SKU-CUP").getFirst().setStatus(ActiveStatus.INACTIVE);
+        String id = body(blind(UUID.randomUUID(), null, null)).get("id").asString();
+        receive(id, "LP1", "333000", 1, Map.of()).andExpect(jsonPath("$.errors.itemBarcode").value("SKU-CUP is inactive"));
+        assertThat(containers.findByLpnId("LP1")).isEmpty();
+    }
+
     // ---------- Receiving items ----------
 
     @Test
@@ -415,6 +492,14 @@ class ReceivingTest {
         line.put("expiryDate", expiry);
         line.put("lpnId", lpn);
         return line;
+    }
+
+    private ResultActions blind(UUID requestId, String vendor, String reference) throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("requestId", requestId);
+        body.put("vendorName", vendor);
+        body.put("reference", reference);
+        return call(json(post("/api/rf/receiving/blind"), body), ann);
     }
 
     private ResultActions checkLpn(String asnId, String lpn) throws Exception {

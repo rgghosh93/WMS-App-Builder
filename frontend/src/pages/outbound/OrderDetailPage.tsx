@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { RefreshCw, XCircle } from 'lucide-react';
+import { RefreshCw, Undo2, XCircle } from 'lucide-react';
 import {
   allocateOrder,
   canAllocate,
@@ -10,12 +10,14 @@ import {
   orderStatusLabel,
   statusClass,
   taskStatusLabel,
+  undoOrder,
   ORDER_STATUSES,
   type AllocationView,
   type OrderDetail,
 } from '../../api/orders';
 import { inventoryStatusLabel } from '../../api/inventory';
 import { errorMessage } from '../../api/http';
+import { OwnerFact } from '../../components/OwnerSelect';
 import { packStatusLabel } from '../../api/packing';
 import { shipmentStatusLabel, shippingBadge } from '../../api/shipping';
 import { useCan } from '../../session/SessionContext';
@@ -34,6 +36,7 @@ export function OrderDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [confirmingShort, setConfirmingShort] = useState(false);
+  const [confirmingUndo, setConfirmingUndo] = useState(false);
   const may = useCan('ORDERS');
   const [notice, setNotice] = useState<string | null>(
     (location.state as { created?: boolean } | null)?.created ? 'Order created and allocated' : null,
@@ -70,6 +73,7 @@ export function OrderDetailPage() {
       setBusy(false);
       setConfirmingCancel(false);
       setConfirmingShort(false);
+      setConfirmingUndo(false);
     }
   };
 
@@ -93,12 +97,17 @@ export function OrderDetailPage() {
   const allocated = open.reduce((s, l) => s + l.allocatedQuantity, 0);
   const allocatable = may && canAllocate({ status: order.status, orderedQuantity: ordered, allocatedQuantity: allocated });
   const picked = order.lines.reduce((s, l) => s + l.pickedQuantity, 0);
-  const canCancel = may && order.status !== 'CANCELLED' && picked === 0;
+  const shipped = order.lines.reduce((s, l) => s + l.shippedQuantity, 0);
+  const canCancel = may && order.status !== 'CANCELLED' && shipped === 0;
+  const canUndo = canCancel && allocated > 0;
+  const putBack =
+    picked > 0 ? ` The ${picked.toLocaleString()} EA already picked ${picked === 1 ? 'has' : 'have'} to be moved back to storage before another order can have ${picked === 1 ? 'it' : 'them'}.` : '';
   // Some of it is picked or gone, and some isn't: the rest can be given up.
   const unpicked = open.reduce((s, l) => s + l.orderedQuantity - l.closedQuantity - l.pickedQuantity, 0);
   const closedShort = order.lines.reduce((s, l) => s + l.closedQuantity, 0);
   const canCloseShort = may && order.status !== 'CANCELLED' && picked > 0 && unpicked > 0;
   const openTasks = order.tasks.filter((t) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').length;
+  const releasedTasks = openTasks === 0 ? '' : ` and its ${openTasks} open pick task${openTasks === 1 ? '' : 's'} cancelled`;
   const allocationsByLine = new Map<number, AllocationView[]>();
   for (const a of order.allocations) {
     allocationsByLine.set(a.lineNumber, [...(allocationsByLine.get(a.lineNumber) ?? []), a]);
@@ -143,6 +152,12 @@ export function OrderDetailPage() {
               Allocate again
             </button>
           )}
+          {canUndo && !confirmingUndo && (
+            <button type="button" className="button" disabled={busy} onClick={() => setConfirmingUndo(true)}>
+              <Undo2 size={16} aria-hidden="true" />
+              {picked > 0 ? 'Undo picking' : 'Undo allocation'}
+            </button>
+          )}
           {canCancel && !confirmingCancel && (
             <button type="button" className="button button--danger-quiet" disabled={busy} onClick={() => setConfirmingCancel(true)}>
               <XCircle size={16} aria-hidden="true" />
@@ -185,11 +200,36 @@ export function OrderDetailPage() {
         </div>
       )}
 
+      {confirmingUndo && (
+        <div className="confirm-bar" role="group" aria-label="Confirm undo">
+          <span>
+            Take {order.orderNumber} back to New? Its stock is released{releasedTasks}.{putBack} It stays New until someone allocates it.
+          </span>
+          <div className="button-row">
+            <button type="button" className="button" onClick={() => setConfirmingUndo(false)} disabled={busy}>
+              Leave it
+            </button>
+            <button
+              type="button"
+              className="button button--danger"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () => undoOrder(order.id),
+                  () => `Order ${order.orderNumber} is New again`,
+                )
+              }
+            >
+              {picked > 0 ? 'Undo picking' : 'Undo allocation'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {confirmingCancel && (
         <div className="confirm-bar" role="group" aria-label="Confirm cancel">
           <span>
-            Cancel {order.orderNumber}? Its reserved stock is released and its {openTasks} open pick task{openTasks === 1 ? '' : 's'}{' '}
-            cancelled.
+            Cancel {order.orderNumber}? Its reserved stock is released{releasedTasks}.{putBack}
           </span>
           <div className="button-row">
             <button type="button" className="button" onClick={() => setConfirmingCancel(false)} disabled={busy}>
@@ -224,6 +264,7 @@ export function OrderDetailPage() {
       )}
 
       <dl className="facts">
+        <OwnerFact owner={order.owner} />
         <div>
           <dt>Customer</dt>
           <dd>{order.customerName}</dd>

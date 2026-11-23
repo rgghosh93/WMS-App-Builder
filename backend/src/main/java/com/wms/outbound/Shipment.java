@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.carrier.CarrierService;
 
 import jakarta.persistence.Column;
@@ -24,7 +25,7 @@ import jakarta.persistence.Version;
 /** Closed cartons of one order going out together. Created when the order's first carton is closed. */
 @Entity
 @Table(name = "shipments")
-public class Shipment {
+public class Shipment extends FacilityRecord {
 
     @Id
     private UUID id;

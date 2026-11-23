@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { type AsnDetail, type AsnItem, type LpnCheck } from '../../api/asns';
+import { getBlindItem, type AsnDetail, type AsnItem, type LpnCheck } from '../../api/asns';
+import { errorMessage } from '../../api/http';
 import { INVENTORY_STATUSES, type InventoryStatus } from '../../api/inventory';
 import { scanMatches, type ItemScan } from '../../api/rf';
 import { formatDay } from '../outbound/OrdersPage';
@@ -41,6 +42,7 @@ export function ReceiveItems({ asn, lpn, busy, error, onClearError, onReceive }:
   const [serials, setSerials] = useState<string[]>([]);
   const [condition, setCondition] = useState<InventoryStatus>('AVAILABLE');
   const [scanError, setScanError] = useState<string | null>(null);
+  const [looking, setLooking] = useState(false);
 
   const reset = () => {
     setItem(null);
@@ -81,18 +83,35 @@ export function ReceiveItems({ asn, lpn, busy, error, onClearError, onReceive }:
     action();
   };
 
+  /** Whether the scan is of this item, which is then the one to receive. */
+  const take = (candidate: AsnItem, value: string): boolean => {
+    const found = candidate.scans.find((s) => scanMatches(value, s.value));
+    if (!found) return false;
+    accept(() => {
+      setItem(candidate);
+      // Serial numbers are one each, whatever was scanned.
+      setScan(candidate.serialControlled ? (candidate.scans.find((s) => s.eachesPerUnit === 1) ?? found) : found);
+    });
+    return true;
+  };
+
+  /** Nothing is announced on a blind receipt, so any item can come. */
+  const lookUp = async (value: string) => {
+    setLooking(true);
+    try {
+      const found = await getBlindItem(asn.id, value);
+      if (!take(found, value)) problem(`${value.toUpperCase()} is not a known item`);
+    } catch (e) {
+      problem(errorMessage(e));
+    } finally {
+      setLooking(false);
+    }
+  };
+
   const scanned = (value: string) => {
     if (part === 'item') {
-      for (const line of asn.lines) {
-        const found = line.item.scans.find((s) => scanMatches(value, s.value));
-        if (found) {
-          return accept(() => {
-            setItem(line.item);
-            // Serial numbers are one each, whatever was scanned.
-            setScan(line.item.serialControlled ? (line.item.scans.find((s) => s.eachesPerUnit === 1) ?? found) : found);
-          });
-        }
-      }
+      if (asn.lines.some((line) => take(line.item, value))) return;
+      if (asn.blind) return void lookUp(value);
       return problem(`${value.toUpperCase()} is not on ${asn.asnNumber}`);
     }
     if (part === 'lot') {
@@ -145,7 +164,7 @@ export function ReceiveItems({ asn, lpn, busy, error, onClearError, onReceive }:
             <Fact label="Item" value={item.itemId} detail={item.description} />
             {lot && <Fact label="Lot" value={lot} />}
             {expiry && <Fact label="Expires" value={formatDay(expiry)} />}
-            <Fact label="To come" value={`${remaining.toLocaleString()} EA`} />
+            {!asn.blind && <Fact label="To come" value={`${remaining.toLocaleString()} EA`} />}
           </dl>
         )}
       </section>
@@ -189,8 +208,8 @@ export function ReceiveItems({ asn, lpn, busy, error, onClearError, onReceive }:
           )}
           <ScanInput
             key={part}
-            label={part === 'item' ? 'Item' : part === 'lot' ? 'Lot' : part === 'serials' ? `Serial number ${serials.length + 1}` : quantityLabel(scan!, remaining)}
-            busy={busy}
+            label={part === 'item' ? 'Item' : part === 'lot' ? 'Lot' : part === 'serials' ? `Serial number ${serials.length + 1}` : quantityLabel(scan!, asn.blind ? null : remaining)}
+            busy={busy || looking}
             error={shownError}
             inputMode={part === 'quantity' ? 'numeric' : undefined}
             onScan={scanned}
@@ -238,9 +257,11 @@ function LotChoices({ lots, busy, onChoose }: { lots: string[]; busy: boolean; o
   );
 }
 
-function quantityLabel(scan: ItemScan, remaining: number): string {
-  const units = Math.floor(remaining / scan.eachesPerUnit);
+/** @param remaining null when nothing is expected */
+function quantityLabel(scan: ItemScan, remaining: number | null): string {
   const each = scan.eachesPerUnit > 1 ? ` of ${scan.eachesPerUnit} EA` : '';
+  if (remaining === null) return `Quantity (${scan.uom}${each})`;
+  const units = Math.floor(remaining / scan.eachesPerUnit);
   return `Quantity (${scan.uom}${each}), ${units.toLocaleString()} expected`;
 }
 

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.control.CountViews.CountItem;
@@ -43,8 +44,8 @@ public class RfCountController {
     }
 
     @GetMapping("/items/{code}")
-    public CountItem item(@PathVariable String code) {
-        return counts.item(code);
+    public CountItem item(@PathVariable String code, @RequestParam(required = false) String owner) {
+        return counts.item(code, owner);
     }
 
     @PostMapping("/{id}/entries")

@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.container.Container;
 import com.wms.masterdata.item.Item;
 import com.wms.masterdata.location.Location;
@@ -28,7 +29,7 @@ import jakarta.persistence.Version;
  */
 @Entity
 @Table(name = "inventory")
-public class InventoryRecord {
+public class InventoryRecord extends FacilityRecord {
 
     @Id
     private UUID id;

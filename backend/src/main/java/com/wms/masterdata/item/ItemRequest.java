@@ -42,6 +42,7 @@ public record ItemRequest(
         @Positive @DecimalMax(MAX_WEIGHT) @Digits(integer = 9, fraction = 3) BigDecimal weight,
         WeightUom weightUom,
         @Valid @Size(max = 10, message = "at most 10 packaging levels") List<ItemUomRequest> uoms,
+        @Size(max = 20) String owner,
         Long version) {
 
     static final String MAX_DIMENSION = "99999999.99";

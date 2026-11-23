@@ -2,6 +2,7 @@ package com.wms.masterdata.zone;
 
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.location.Location;
 
 import jakarta.persistence.Column;
@@ -17,7 +18,7 @@ import jakarta.persistence.Table;
 /** A location in a zone. The function is repeated so a location can't be in two zones of one. */
 @Entity
 @Table(name = "zone_locations")
-public class ZoneLocation {
+public class ZoneLocation extends FacilityRecord {
 
     @Id
     private UUID id;

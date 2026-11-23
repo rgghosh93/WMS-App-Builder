@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.wms.common.ActiveStatus;
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.facility.Site;
 
 import jakarta.validation.Valid;
 
@@ -61,7 +62,7 @@ public class UserController {
 
     @GetMapping("/{id}")
     public UserView get(@PathVariable UUID id) {
-        return service.get(id);
+        return Site.everywhere(() -> service.get(id));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)

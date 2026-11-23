@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wms.common.api.ApiException;
 import com.wms.common.api.PageResponse;
+import com.wms.facility.Site;
+import com.wms.masterdata.owner.Owners;
 import com.wms.users.Permission;
 import com.wms.users.Requires;
 
@@ -36,15 +38,18 @@ public class ItemController {
     private static final Set<String> SORTABLE = Set.of("itemId", "description", "status", "barcode", "updatedAt");
 
     private final ItemService service;
+    private final Owners owners;
 
-    public ItemController(ItemService service) {
+    public ItemController(ItemService service, Owners owners) {
         this.service = service;
+        this.owners = owners;
     }
 
     @GetMapping
     public PageResponse<ItemResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) ActiveStatus status,
+            @RequestParam(required = false) String owner,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(defaultValue = "itemId") String sort,
@@ -58,7 +63,7 @@ public class ItemController {
             order = order.and(Sort.by("itemId"));
         }
         PageRequest pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE), order);
-        return PageResponse.of(service.search(new ItemSearch(q, status), pageable), i -> i);
+        return PageResponse.of(service.search(new ItemSearch(q, status, owners.filter(owner)), pageable), i -> i);
     }
 
     @GetMapping("/{id}")
@@ -83,6 +88,10 @@ public class ItemController {
     @Requires(Permission.MASTER_DATA)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {
-        service.delete(id);
+        // It may be in use in any facility.
+        Site.everywhere(() -> {
+            service.delete(id);
+            return null;
+        });
     }
 }

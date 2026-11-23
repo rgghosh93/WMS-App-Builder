@@ -1,4 +1,5 @@
 import { request, type Page } from './http';
+import type { OwnerRef } from './owners';
 import type { InventoryStatus } from './inventory';
 import type { PackTask } from './packing';
 import type { ShipTo, Shipment } from './shipping';
@@ -13,11 +14,11 @@ export type PickMethod = 'DISCRETE' | 'BATCH';
 export function pickMethodLabel(method: PickMethod): string {
   return method === 'BATCH' ? 'Batch' : 'Discrete';
 }
-export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'PICKED' | 'DROPPED' | 'PACKED' | 'SHIPPED' | 'CLOSED_SHORT' | 'CANCELLED';
+export type OrderEventType = 'RECEIVED' | 'ALLOCATED' | 'SHORT' | 'TASKS_CREATED' | 'PICKED' | 'DROPPED' | 'PACKED' | 'SHIPPED' | 'CLOSED_SHORT' | 'UNDONE' | 'CANCELLED';
 
 export const ORDER_STATUSES: { value: OrderStatus; label: string; hint: string }[] = [
   { value: 'NEW', label: 'New', hint: 'Received; not allocated yet' },
-  { value: 'PARTIALLY_ALLOCATED', label: 'Partially allocated', hint: 'Some of the ordered quantity has stock reserved' },
+  { value: 'PARTIALLY_ALLOCATED', label: 'Partially allocated', hint: 'Some of it has stock reserved; the rest is allocated by itself when there is some' },
   { value: 'ALLOCATED', label: 'Allocated', hint: 'Fully allocated, with pick tasks' },
   { value: 'PICKING', label: 'Picking', hint: 'Picking has started; some of it is in outbound containers' },
   { value: 'PICKED', label: 'Picked', hint: 'Everything ordered is picked' },
@@ -25,7 +26,7 @@ export const ORDER_STATUSES: { value: OrderStatus; label: string; hint: string }
   { value: 'PACKED', label: 'Packed', hint: 'Everything ordered is packed and ready to ship' },
   { value: 'PARTIALLY_SHIPPED', label: 'Partially shipped', hint: 'Some of it has shipped; the rest has not' },
   { value: 'SHIPPED', label: 'Shipped', hint: 'Everything ordered has shipped' },
-  { value: 'BACKORDERED', label: 'Backordered', hint: 'No stock could be reserved' },
+  { value: 'BACKORDERED', label: 'Backordered', hint: 'Waiting for stock; allocated by itself when there is some' },
   { value: 'CANCELLED', label: 'Cancelled', hint: 'Stock released and tasks cancelled' },
 ];
 
@@ -66,6 +67,8 @@ export interface Ref {
 
 export interface OrderSummary {
   id: string;
+  /** Whose it is. */
+  owner?: OwnerRef | null;
   orderNumber: string;
   customerName: string;
   requestedShipDate: string | null;
@@ -181,6 +184,8 @@ export interface OrderEventView {
 
 export interface OrderDetail {
   id: string;
+  /** Whose it is. */
+  owner?: OwnerRef | null;
   orderNumber: string;
   customerName: string;
   requestedShipDate: string | null;
@@ -199,6 +204,8 @@ export interface OrderDetail {
 }
 
 export interface OrderInput {
+  /** Code of whose it is; the first owner if left out. */
+  owner?: string;
   orderNumber: string | null;
   customerName: string;
   requestedShipDate: string | null;
@@ -213,6 +220,7 @@ export type OrderSortField = 'createdAt' | 'orderNumber' | 'customerName' | 'req
 export interface OrderQuery {
   q: string;
   status: OrderStatus | '';
+  owner?: string;
   page: number;
   size: number;
   sort: OrderSortField;
@@ -223,6 +231,7 @@ export function listOrders(query: OrderQuery, signal?: AbortSignal): Promise<Pag
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.status) params.set('status', query.status);
+  if (query.owner) params.set('owner', query.owner);
   params.set('page', String(query.page));
   params.set('size', String(query.size));
   params.set('sort', query.sort);
@@ -264,6 +273,11 @@ export function allocateOrder(id: string): Promise<OrderDetail> {
 /** Gives up on what isn't picked; what is picked still ships. */
 export function closeOrderShort(id: string): Promise<OrderDetail> {
   return request(`/api/orders/${id}/close-short`, { method: 'POST' });
+}
+
+/** Takes an order back to New, whatever is allocated, picked or packed of it. */
+export function undoOrder(id: string): Promise<OrderDetail> {
+  return request(`/api/orders/${id}/undo`, { method: 'POST' });
 }
 
 export function cancelOrder(id: string): Promise<OrderDetail> {

@@ -8,8 +8,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -18,6 +22,9 @@ import org.springframework.stereotype.Component;
 import com.wms.common.ActiveStatus;
 import com.wms.common.Codes;
 import com.wms.common.api.ApiException;
+import com.wms.facility.FacilityRef;
+import com.wms.facility.FacilityRepository;
+import com.wms.facility.Site;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -32,15 +39,17 @@ class SessionStore {
     private final AppUserRepository users;
     private final DeviceSessionRepository sessions;
     private final PinHasher hasher;
+    private final FacilityRepository facilities;
     private final SecureRandom random = new SecureRandom();
     /** Checked when there is nothing to check against, so that takes as long as a wrong secret. */
     private final String decoyPin;
     private final String decoyPassword;
 
-    SessionStore(AppUserRepository users, DeviceSessionRepository sessions, PinHasher hasher) {
+    SessionStore(AppUserRepository users, DeviceSessionRepository sessions, PinHasher hasher, FacilityRepository facilities) {
         this.users = users;
         this.sessions = sessions;
         this.hasher = hasher;
+        this.facilities = facilities;
         this.decoyPin = hasher.hash("decoy");
         this.decoyPassword = hasher.hashPassword("decoy");
     }
@@ -68,6 +77,15 @@ class SessionStore {
         return user;
     }
 
+    /**
+     * Someone signed in, and where.
+     *
+     * @param facility  where they are working
+     * @param facilities where else they may
+     */
+    record Found(AppUser user, FacilityRef facility, List<FacilityRef> facilities) {
+    }
+
     /** Opens a session; the token goes to the browser and is not stored. */
     String open(AppUser user, DeviceSession.Kind kind) {
         Instant now = Instant.now();
@@ -76,19 +94,47 @@ class SessionStore {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.save(new DeviceSession(user, kind, sha256(token), now, now.plus(LENGTH)));
+        sessions.save(new DeviceSession(user, kind, sha256(token), place(user, null).facility().id(), now, now.plus(LENGTH)));
         return token;
     }
 
     /** Whose session it is, if it is still good. */
-    Optional<AppUser> find(String token, DeviceSession.Kind kind) {
+    Optional<Found> find(String token, DeviceSession.Kind kind) {
+        return session(token, kind).map(s -> place(s.getUser(), s.getFacilityId()));
+    }
+
+    private Optional<DeviceSession> session(String token, DeviceSession.Kind kind) {
         if (token == null || token.isBlank()) {
             return Optional.empty();
         }
         return sessions.findByTokenHashAndKind(sha256(token), kind)
                 .filter(s -> Instant.now().isBefore(s.getExpiresAt()))
-                .map(DeviceSession::getUser)
-                .filter(u -> u.getStatus() == ActiveStatus.ACTIVE);
+                .filter(s -> s.getUser().getStatus() == ActiveStatus.ACTIVE);
+    }
+
+    /** Goes on in another facility. */
+    Found go(String token, DeviceSession.Kind kind, UUID facilityId) {
+        DeviceSession session = session(token, kind).orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Sign in to continue"));
+        Found found = place(session.getUser(), facilityId);
+        if (!found.facility().id().equals(facilityId)) {
+            throw ApiException.invalid("You can't work there", Map.of("facilityId", "choose one of your facilities"));
+        }
+        session.setFacilityId(facilityId);
+        session.getUser().setLastFacilityId(facilityId);
+        return found;
+    }
+
+    /** Where someone works: where they say, or worked last, if they still may, or else the first place they may. */
+    Found place(AppUser user, UUID wanted) {
+        List<FacilityRef> allowed = facilities.findByStatusOrderByCodeAsc(ActiveStatus.ACTIVE).stream()
+                .filter(f -> user.worksIn(f.getId())).map(FacilityRef::of).toList();
+        if (allowed.isEmpty()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "You don't work in any active facility. Ask an administrator.");
+        }
+        FacilityRef here = Stream.of(wanted, user.getLastFacilityId()).filter(Objects::nonNull)
+                .flatMap(id -> allowed.stream().filter(f -> f.id().equals(id))).findFirst()
+                .orElseGet(() -> allowed.stream().filter(f -> f.id().equals(Site.FIRST)).findFirst().orElse(allowed.getFirst()));
+        return new Found(user, here, allowed);
     }
 
     void close(String token, DeviceSession.Kind kind) {

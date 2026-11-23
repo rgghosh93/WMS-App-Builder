@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.wms.common.ActiveStatus;
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryStatus;
 import com.wms.masterdata.container.ContainerCategory;
 import com.wms.masterdata.item.Item;
@@ -26,7 +27,7 @@ import jakarta.persistence.Version;
 /** Which LPNs go where. Rules are tried in sequence; the first that fits and has room decides. */
 @Entity
 @Table(name = "putaway_rules")
-public class PutawayRule {
+public class PutawayRule extends FacilityRecord {
 
     @Id
     private UUID id;

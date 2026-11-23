@@ -70,12 +70,15 @@ function PackStation({ user, onSignedOut }: { user: DeviceUser; onSignedOut: () 
         onBack={() => setTask(null)}
         onCompleted={(t) => {
           setTask(null);
-          const cartons = t.cartons.length;
+          const cartons = t.cartons.filter((c) => c.status !== 'CANCELLED').length;
+          const leftover = t.details.some((d) => d.cancelledQuantity > 0);
           setDone(
-            cartons === 0
+            t.status === 'CANCELLED'
+              ? `${t.taskNumber} is called off: what is in ${t.container.lpnId} goes back to storage.`
+              : cartons === 0
               ? `${t.taskNumber} is closed. Nothing was packed.`
               : `${t.taskNumber} is packed in ${cartons} carton${cartons === 1 ? '' : 's'}. ${
-                  cartonsIncludeContainer(t) ? '' : `${t.container.lpnId} is empty.`
+                  cartonsIncludeContainer(t) ? '' : leftover ? `What is left in ${t.container.lpnId} goes back to storage.` : `${t.container.lpnId} is empty.`
                 }`.trim(),
           );
         }}

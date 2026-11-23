@@ -2,6 +2,7 @@ package com.wms.outbound;
 
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.item.Item;
 
 import jakarta.persistence.Column;
@@ -16,7 +17,7 @@ import jakarta.persistence.Version;
 /** Stock to pack for one order line: what one pick put in the container. */
 @Entity
 @Table(name = "pack_task_details")
-public class PackTaskDetail {
+public class PackTaskDetail extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -64,6 +65,10 @@ public class PackTaskDetail {
     @Column(name = "short_quantity", nullable = false)
     private int shortQuantity;
 
+    /** Not to be packed any more, because the order was cancelled or undone. */
+    @Column(name = "cancelled_quantity", nullable = false)
+    private int cancelledQuantity;
+
     @Version
     private long version;
 
@@ -86,7 +91,7 @@ public class PackTaskDetail {
     }
 
     public int remaining() {
-        return quantity - packedQuantity - shortQuantity;
+        return quantity - packedQuantity - shortQuantity - cancelledQuantity;
     }
 
     void packed(int eaches) {
@@ -99,6 +104,13 @@ public class PackTaskDetail {
 
     void missing(int eaches) {
         shortQuantity += eaches;
+    }
+
+    /** The order was cancelled or undone: none of it is packed, and what is packed isn't any more. */
+    void cancel() {
+        packedQuantity = 0;
+        cancelledQuantity = quantity - shortQuantity;
+        allocation = null;
     }
 
     void setAllocation(Allocation allocation) {
@@ -118,4 +130,5 @@ public class PackTaskDetail {
     public int getQuantity() { return quantity; }
     public int getPackedQuantity() { return packedQuantity; }
     public int getShortQuantity() { return shortQuantity; }
+    public int getCancelledQuantity() { return cancelledQuantity; }
 }

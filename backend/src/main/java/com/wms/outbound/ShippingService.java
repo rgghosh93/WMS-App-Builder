@@ -90,6 +90,20 @@ public class ShippingService implements CarrierUsage {
         openShipment(carton.getOrder(), null).add(carton);
     }
 
+    /** Takes a closed carton off its shipment, because its order was cancelled or undone. A shipment of nothing goes too. */
+    void takeBack(PackCarton carton) {
+        Shipment shipment = carton.getShipment();
+        if (shipment == null) {
+            return;
+        }
+        shipment.remove(carton);
+        carton.setShipment(null);
+        if (shipment.getCartons().isEmpty()) {
+            shipments.flush();
+            shipments.delete(shipment);
+        }
+    }
+
     private Shipment openShipment(OutboundOrder order, CarrierService service) {
         return shipments.findByOrder_IdOrderByShipmentNumber(order.getId()).stream()
                 .filter(s -> s.getStatus() == ShipmentStatus.OPEN).findFirst()

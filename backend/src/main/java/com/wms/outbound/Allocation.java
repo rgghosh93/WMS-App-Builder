@@ -3,6 +3,7 @@ package com.wms.outbound;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.inventory.InventoryRecord;
 
 import jakarta.persistence.Column;
@@ -16,7 +17,7 @@ import jakarta.persistence.Table;
 /** Stock reserved for an order line: a quantity taken from one inventory record. */
 @Entity
 @Table(name = "allocations")
-public class Allocation {
+public class Allocation extends FacilityRecord {
 
     @Id
     private UUID id;

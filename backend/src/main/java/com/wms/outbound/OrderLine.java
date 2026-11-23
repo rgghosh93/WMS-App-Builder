@@ -2,6 +2,7 @@ package com.wms.outbound;
 
 import java.util.UUID;
 
+import com.wms.facility.FacilityRecord;
 import com.wms.masterdata.item.Item;
 
 import jakarta.persistence.Column;
@@ -17,7 +18,7 @@ import jakarta.persistence.Table;
 /** One item on an order, in eaches, with how much of it has stock reserved. */
 @Entity
 @Table(name = "order_lines")
-public class OrderLine {
+public class OrderLine extends FacilityRecord {
 
     @Id
     private UUID id;
@@ -155,8 +156,16 @@ public class OrderLine {
     }
 
     void cancel() {
-        allocatedQuantity = 0;
+        startOver();
         status = LineStatus.CANCELLED;
+    }
+
+    /** Back to where it was before it was first allocated. */
+    void startOver() {
+        allocatedQuantity = 0;
+        pickedQuantity = 0;
+        packedQuantity = 0;
+        status = LineStatus.NEW;
     }
 
     public UUID getId() { return id; }

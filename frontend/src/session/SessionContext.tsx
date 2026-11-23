@@ -4,6 +4,8 @@ import type { DesktopUser, Permission } from '../api/session';
 export interface DesktopSession {
   user: DesktopUser;
   signOut: () => void;
+  /** Goes on working in another facility. Resolves to what went wrong, if anything did. */
+  goTo?: (facilityId: string) => Promise<string | null>;
   changePassword: () => void;
 }
 

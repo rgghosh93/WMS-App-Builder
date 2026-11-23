@@ -105,7 +105,7 @@ describe('Users', () => {
     reply = null;
     await user.click(screen.getByRole('button', { name: 'Create user' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Created user BOB');
-    expect(sent[1].body).toEqual({ userCode: 'BOB', displayName: 'Bob Ray', status: 'ACTIVE', roleIds: ['op'], pin: made, password });
+    expect(sent[1].body).toEqual({ userCode: 'BOB', displayName: 'Bob Ray', status: 'ACTIVE', roleIds: ['op'], facilityIds: [], pin: made, password });
   });
 
   it('shows what they are doing, and makes them inactive', async () => {
@@ -120,7 +120,7 @@ describe('Users', () => {
     expect(sent[0]).toEqual({
       method: 'PUT',
       path: '/api/users/u1',
-      body: { userCode: 'ANN', displayName: 'Ann Lee', status: 'INACTIVE', roleIds: ['op'], version: 3 },
+      body: { userCode: 'ANN', displayName: 'Ann Lee', status: 'INACTIVE', roleIds: ['op'], facilityIds: [], version: 3 },
     });
   });
 
