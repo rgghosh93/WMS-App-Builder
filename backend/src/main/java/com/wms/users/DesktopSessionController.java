@@ -1,6 +1,7 @@
 package com.wms.users;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpHeaders;
@@ -34,18 +35,21 @@ public class DesktopSessionController {
     static final String COOKIE = "wms_desktop";
 
     private final DesktopSessionService service;
+    private final FirstSetup setup;
 
-    public DesktopSessionController(DesktopSessionService service) {
+    public DesktopSessionController(DesktopSessionService service, FirstSetup setup) {
         this.service = service;
+        this.setup = setup;
     }
 
     public enum State { SIGNED_IN, SIGNED_OUT, SETUP }
 
     /**
-     * @param user      who is signed in, or null
-     * @param setupHere whether the first administrator may be made from where this was asked
+     * @param user         who is signed in, or null
+     * @param setupHere    the first administrator may be made from here
+     * @param setupWithKey it may be made from anywhere with the setup key, which whoever runs the WMS has
      */
-    public record SessionView(State state, DesktopUser user, boolean setupHere) {
+    public record SessionView(State state, DesktopUser user, boolean setupHere, boolean setupWithKey) {
     }
 
     public record SignInRequest(
@@ -60,7 +64,8 @@ public class DesktopSessionController {
     public record SetupRequest(
             @NotBlank @Size(max = 40) @Pattern(regexp = Codes.PATTERN, message = Codes.MESSAGE) String userCode,
             @NotBlank @Size(max = 120) String displayName,
-            @NotNull String password) {
+            @NotNull String password,
+            @Size(max = 200) String setupKey) {
         @Override
         public String toString() {
             return "SetupRequest[userCode=" + userCode + "]";
@@ -76,9 +81,9 @@ public class DesktopSessionController {
 
     @GetMapping
     public SessionView current(@CookieValue(name = COOKIE, required = false) String token, HttpServletRequest request) {
-        return service.find(token).map(u -> new SessionView(State.SIGNED_IN, u, false)).orElseGet(() ->
-                service.needsSetup() ? new SessionView(State.SETUP, null, LocalRequests.isLocal(request))
-                        : new SessionView(State.SIGNED_OUT, null, false));
+        return service.find(token).map(u -> new SessionView(State.SIGNED_IN, u, false, false)).orElseGet(() ->
+                service.needsSetup() ? new SessionView(State.SETUP, null, setup.here(request), setup.withKey())
+                        : new SessionView(State.SIGNED_OUT, null, false, false));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -88,7 +93,10 @@ public class DesktopSessionController {
 
     @PostMapping(value = "/setup", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<DesktopUser> setUp(@Valid @RequestBody SetupRequest body, HttpServletRequest request) {
-        if (!LocalRequests.isLocal(request)) {
+        if (!setup.here(request) && !setup.opens(body.setupKey())) {
+            if (setup.withKey()) {
+                throw new ApiException(HttpStatus.FORBIDDEN, "That setup key isn't right", Map.of("setupKey", "isn't right"));
+            }
             throw new ApiException(HttpStatus.FORBIDDEN, "The first administrator can only be made on the computer the WMS runs on");
         }
         return signedIn(service.setUp(body.userCode(), body.displayName(), body.password()), request);

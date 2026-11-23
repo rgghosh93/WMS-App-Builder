@@ -15,3 +15,6 @@ Thumbs.db
 
 # Local dev database
 backend/data/
+
+# Built frontend packed into the backend (Docker build)
+backend/src/main/resources/static/

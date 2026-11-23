@@ -42,7 +42,7 @@ public class AccessConfig implements WebMvcConfigurer {
         registry.addInterceptor(new SameSite()).addPathPatterns("/api/**");
         registry.addInterceptor(new Device()).addPathPatterns("/api/rf/**").excludePathPatterns("/api/rf/session", "/api/rf/session/**");
         registry.addInterceptor(new Desktop()).addPathPatterns("/api/**")
-                .excludePathPatterns("/api/rf/**", "/api/session", "/api/session/**");
+                .excludePathPatterns("/api/rf/**", "/api/session", "/api/session/**", "/api/health");
     }
 
     /** Browsers say when another site made them send a request; nothing is changed for those. */

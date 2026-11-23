@@ -43,6 +43,8 @@ export interface SessionView {
   user: DesktopUser | null;
   /** Whether the first administrator may be made from here. */
   setupHere: boolean;
+  /** Whether it may be made from anywhere with the setup key, as in the cloud. */
+  setupWithKey?: boolean;
 }
 
 export function getSession(signal?: AbortSignal): Promise<SessionView> {
@@ -53,8 +55,9 @@ export function signInToDesktop(userCode: string, password: string): Promise<Des
   return request('/api/session', { method: 'POST', body: JSON.stringify({ userCode, password }) });
 }
 
-export function setUpAdministrator(userCode: string, displayName: string, password: string): Promise<DesktopUser> {
-  return request('/api/session/setup', { method: 'POST', body: JSON.stringify({ userCode, displayName, password }) });
+/** @param setupKey needed unless this is the computer the WMS runs on */
+export function setUpAdministrator(userCode: string, displayName: string, password: string, setupKey?: string): Promise<DesktopUser> {
+  return request('/api/session/setup', { method: 'POST', body: JSON.stringify({ userCode, displayName, password, setupKey }) });
 }
 
 export function changePassword(currentPassword: string, newPassword: string): Promise<DesktopUser> {

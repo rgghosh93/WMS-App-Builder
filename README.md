@@ -63,6 +63,12 @@ cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=postgres
 cd backend && ./mvnw test
 ```
 
+The same backend tests against a real PostgreSQL 17, started for the run with no Docker or install needed:
+
+```bash
+cd backend && ./mvnw test -Dwms.test.postgres=true
+```
+
 ```bash
 cd frontend && npm test
 ```
@@ -72,3 +78,7 @@ cd frontend && npm test
 Add an entry to the right module in `backend/src/main/resources/catalog/pages.json`
 with a unique `id` and `route`. Set `"status": "AVAILABLE"` once the page is built;
 `PLANNED` pages show as "Coming soon" on the home screen and in the sidebar.
+
+## Deploying
+
+The WMS deploys to Render as two environments, base (`main`) and builder (`builder`). See [DEPLOY.md](DEPLOY.md).

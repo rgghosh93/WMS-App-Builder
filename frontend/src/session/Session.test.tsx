@@ -142,6 +142,27 @@ describe('First administrator', () => {
     expect(sent[1].body).toEqual({ userCode: 'BOSS', displayName: 'The Boss', password: 'correct horse battery' });
   });
 
+  it('is created from elsewhere with the setup key', async () => {
+    const user = userEvent.setup();
+    session = { state: 'SETUP', user: null, setupHere: false, setupWithKey: true };
+    open('/');
+    await user.click(await screen.findByRole('button', { name: 'Create administrator' }));
+    expect(screen.getByText('Enter the setup key')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Setup key'), 'wrong-key');
+    await user.type(screen.getByLabelText('User ID'), 'boss');
+    await user.type(screen.getByLabelText('Name'), 'The Boss');
+    await user.type(screen.getByLabelText('Password'), 'correct horse battery');
+    await user.type(screen.getByLabelText('Password again'), 'correct horse battery');
+    replies['/api/session/setup'] = [{ status: 403, body: { detail: "That setup key isn't right", errors: { setupKey: "isn't right" } } }, { body: BOSS }];
+    await user.click(screen.getByRole('button', { name: 'Create administrator' }));
+    expect(await screen.findByText("Isn't right")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Setup key'));
+    await user.type(screen.getByLabelText('Setup key'), 'the-right-key');
+    await user.click(screen.getByRole('button', { name: 'Create administrator' }));
+    expect(await screen.findByText('The Boss')).toBeInTheDocument();
+    expect(sent[1].body).toMatchObject({ userCode: 'BOSS', setupKey: 'the-right-key' });
+  });
+
   it('is not created from elsewhere', async () => {
     const user = userEvent.setup();
     session = { state: 'SETUP', user: null, setupHere: false };

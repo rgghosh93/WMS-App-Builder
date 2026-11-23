@@ -1,0 +1,88 @@
+# Render Blueprint: two copies of the WMS, each with its own PostgreSQL.
+#   wms-base     runs the main branch: the base WMS as shipped.
+#   wms-builder  runs the builder branch: where the App Builder's changes go. It has the demo warehouse.
+# Create it in Render with New > Blueprint, choosing this repository. See DEPLOY.md.
+
+databases:
+  - name: wms-base-db
+    plan: basic-1gb
+    region: virginia
+    databaseName: wms
+    user: wms
+    postgresMajorVersion: "17"
+    # Only the services in this workspace can reach it.
+    ipAllowList: []
+
+  - name: wms-builder-db
+    plan: basic-256mb
+    region: virginia
+    databaseName: wms
+    user: wms
+    postgresMajorVersion: "17"
+    ipAllowList: []
+
+services:
+  - type: web
+    name: wms-base
+    runtime: docker
+    plan: standard
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    # Deploy only once the tests on GitHub have passed.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: postgres,cloud
+      - key: WMS_DB_HOST
+        fromDatabase: { name: wms-base-db, property: host }
+      - key: WMS_DB_PORT
+        fromDatabase: { name: wms-base-db, property: port }
+      - key: WMS_DB_NAME
+        fromDatabase: { name: wms-base-db, property: database }
+      - key: WMS_DB_USER
+        fromDatabase: { name: wms-base-db, property: user }
+      - key: WMS_DB_PASSWORD
+        fromDatabase: { name: wms-base-db, property: password }
+      # Needed once, to create the first administrator. Read it in the service's Environment tab.
+      - key: WMS_SETUP_KEY
+        generateValue: true
+
+  - type: web
+    name: wms-builder
+    runtime: docker
+    plan: standard
+    region: virginia
+    branch: builder
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    # The sync workflow tests main merged into builder before it pushes, so every push deploys.
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: postgres,cloud
+      - key: WMS_DB_HOST
+        fromDatabase: { name: wms-builder-db, property: host }
+      - key: WMS_DB_PORT
+        fromDatabase: { name: wms-builder-db, property: port }
+      - key: WMS_DB_NAME
+        fromDatabase: { name: wms-builder-db, property: database }
+      - key: WMS_DB_USER
+        fromDatabase: { name: wms-builder-db, property: user }
+      - key: WMS_DB_PASSWORD
+        fromDatabase: { name: wms-builder-db, property: password }
+      - key: WMS_SETUP_KEY
+        generateValue: true
+      - key: WMS_DEMO_DATA
+        value: "true"
+      # PIN of the demo device users PICKER1 and PICKER2: 4 to 12 digits, asked for when the Blueprint is created.
+      - key: WMS_DEMO_PIN
+        sync: false
+      # The builder's migrations are numbered from V1000; base ones that come later must still be applied.
+      - key: SPRING_FLYWAY_OUT_OF_ORDER
+        value: "true"
+      - key: WMS_DB_POOL
+        value: "5"

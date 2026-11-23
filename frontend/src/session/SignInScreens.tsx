@@ -88,7 +88,9 @@ export function DesktopSignIn({ onSignedIn }: { onSignedIn: (user: DesktopUser) 
 }
 
 /** The first administrator, made on the computer the WMS runs on. */
-export function SetupScreen({ onSignedIn, onSkip }: { onSignedIn: (user: DesktopUser) => void; onSkip: () => void }) {
+/** @param needsKey made from elsewhere than the computer the WMS runs on, which takes the setup key */
+export function SetupScreen({ onSignedIn, onSkip, needsKey = false }: { onSignedIn: (user: DesktopUser) => void; onSkip: () => void; needsKey?: boolean }) {
+  const [setupKey, setSetupKey] = useState('');
   const [userCode, setUserCode] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -100,6 +102,7 @@ export function SetupScreen({ onSignedIn, onSkip }: { onSignedIn: (user: Desktop
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const found: Errors = {};
+    if (needsKey && !setupKey.trim()) found.setupKey = 'Enter the setup key';
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(userCode.trim())) found.userCode = "Use letters, numbers, '-', '_' or '.'";
     if (!name.trim()) found.displayName = 'Enter your name';
     if (password.length < MIN_PASSWORD) found.password = `Use at least ${MIN_PASSWORD} characters`;
@@ -109,7 +112,7 @@ export function SetupScreen({ onSignedIn, onSkip }: { onSignedIn: (user: Desktop
     if (Object.keys(found).length > 0) return;
     setBusy(true);
     try {
-      onSignedIn(await setUpAdministrator(userCode.trim(), name.trim(), password));
+      onSignedIn(await setUpAdministrator(userCode.trim(), name.trim(), password, needsKey ? setupKey.trim() : undefined));
     } catch (error) {
       if (error instanceof ApiError) setErrors(Object.fromEntries(Object.entries(error.fieldErrors).map(([f, m]) => [f, sentenceCase(m)])));
       setFormError(errorMessage(error));
@@ -126,13 +129,28 @@ export function SetupScreen({ onSignedIn, onSkip }: { onSignedIn: (user: Desktop
             {formError}
           </div>
         )}
+        {needsKey && (
+          <Field id="setup-key" label="Setup key" error={errors.setupKey} hint="Whoever set up the WMS's server has it (WMS_SETUP_KEY). It is only needed this once.">
+            <input
+              id="setup-key"
+              type="password"
+              value={setupKey}
+              maxLength={200}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.setupKey)}
+              onChange={(e) => setSetupKey(e.target.value)}
+            />
+          </Field>
+        )}
         <Field id="setup-user" label="User ID" error={errors.userCode} hint="What you sign in with">
           <input
             id="setup-user"
             className="input--code"
             value={userCode}
             maxLength={40}
-            autoFocus
+            autoFocus={!needsKey}
             autoComplete="username"
             spellCheck={false}
             aria-invalid={Boolean(errors.userCode)}

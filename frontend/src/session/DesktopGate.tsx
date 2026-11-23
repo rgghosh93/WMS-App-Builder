@@ -86,7 +86,8 @@ export function DesktopGate() {
   const { view } = state;
   if (view.state === 'SETUP' && !signingIn) {
     const skip = () => setSigningIn(true);
-    return view.setupHere ? <SetupScreen onSignedIn={signedIn} onSkip={skip} /> : <SetupNotHere onSkip={skip} />;
+    if (view.setupHere || view.setupWithKey) return <SetupScreen onSignedIn={signedIn} onSkip={skip} needsKey={!view.setupHere} />;
+    return <SetupNotHere onSkip={skip} />;
   }
   if (!view.user) return <DesktopSignIn onSignedIn={signedIn} />;
   if (view.user.mustChangePassword) {
