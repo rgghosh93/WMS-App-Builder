@@ -19,6 +19,10 @@ import com.wms.builder.llm.LlmGateway;
 @Configuration
 class BuilderConfig {
 
+    BuilderConfig(BuilderSettings settings) {
+        Workspace.signInToGitHub(settings.githubToken());
+    }
+
     @Bean
     @ConditionalOnProperty(name = "wms.builder.enabled", havingValue = "true")
     @ConditionalOnMissingBean

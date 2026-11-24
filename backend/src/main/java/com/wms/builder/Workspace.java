@@ -372,12 +372,44 @@ public class Workspace {
         return result.output();
     }
 
+    /** How git signs in to the source, if it needs to: a header for GitHub, never in a URL or a file. */
+    private static volatile String gitAuthorization;
+
+    /** Lets git fetch from and push to GitHub with this token. Null or blank for a source that needs no sign-in. */
+    static void signInToGitHub(String token) {
+        gitAuthorization = token == null || token.isBlank() ? null : "AUTHORIZATION: basic " + java.util.Base64.getEncoder()
+                .encodeToString(("x-access-token:" + token.strip()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * What a command started for the agent may see of the server's settings. Its builds and checks run code the agent
+     * wrote, so no secret goes to them: keys, tokens, passwords and the database's settings are left out (GR-7). Only git
+     * is given the sign-in to the source.
+     */
+    static void secure(java.util.Map<String, String> environment, boolean git) {
+        environment.keySet().removeIf(name -> {
+            String upper = name.toUpperCase(java.util.Locale.ROOT);
+            return upper.contains("KEY") || upper.contains("TOKEN") || upper.contains("SECRET") || upper.contains("PASSWORD")
+                    || upper.contains("CREDENTIAL") || upper.startsWith("WMS_DB_") || upper.startsWith("SPRING_DATASOURCE")
+                    || upper.startsWith("DATABASE_") || upper.startsWith("GIT_CONFIG");
+        });
+        environment.put("GIT_TERMINAL_PROMPT", "0");
+        String authorization = gitAuthorization;
+        if (git && authorization != null) {
+            environment.put("GIT_CONFIG_COUNT", "1");
+            environment.put("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader");
+            environment.put("GIT_CONFIG_VALUE_0", authorization);
+        }
+    }
+
     private static Result run(Path in, Duration limit, String... command) {
         try {
             Path log = Files.createTempFile("wms-builder", ".log");
             try {
-                Process process = new ProcessBuilder(command).directory(in.toFile()).redirectErrorStream(true)
-                        .redirectOutput(log.toFile()).redirectInput(ProcessBuilder.Redirect.from(nullDevice())).start();
+                ProcessBuilder builder = new ProcessBuilder(command).directory(in.toFile()).redirectErrorStream(true)
+                        .redirectOutput(log.toFile()).redirectInput(ProcessBuilder.Redirect.from(nullDevice()));
+                secure(builder.environment(), command.length > 0 && command[0].equals("git"));
+                Process process = builder.start();
                 if (!process.waitFor(limit.toSeconds(), TimeUnit.SECONDS)) {
                     process.descendants().forEach(ProcessHandle::destroyForcibly);
                     process.destroyForcibly();

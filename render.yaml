@@ -1,6 +1,7 @@
 # Render Blueprint: two copies of the WMS, each with its own PostgreSQL.
 #   wms-base     runs the main branch: the base WMS as shipped.
-#   wms-builder  runs the builder branch: where the App Builder's changes go. It has the demo warehouse.
+#   wms-builder  runs the builder branch: where the App Builder's changes go. It has the demo warehouse, and the App Builder
+#                is switched on there, and only there.
 # Create it in Render with New > Blueprint, choosing this repository. See DEPLOY.md.
 
 databases:
@@ -56,8 +57,14 @@ services:
     plan: standard
     region: virginia
     branch: builder
-    dockerfilePath: ./Dockerfile
+    # The same server, plus git, a full JDK and Node, so the App Builder's agent can work on the code and run its checks.
+    dockerfilePath: ./Dockerfile.builder
     dockerContext: .
+    # Each change request's copy of the code, kept across restarts and deploys.
+    disk:
+      name: builder-work
+      mountPath: /var/wms-builder
+      sizeGB: 10
     healthCheckPath: /api/health
     # The sync workflow tests main merged into builder before it pushes, so every push deploys.
     autoDeployTrigger: commit
@@ -86,3 +93,20 @@ services:
         value: "true"
       - key: WMS_DB_POOL
         value: "5"
+      # The App Builder: changes start from builder on GitHub and are accepted back into it, which redeploys this service.
+      - key: WMS_BUILDER_ENABLED
+        value: "true"
+      - key: WMS_BUILDER_SOURCE
+        value: https://github.com/rgghosh93/WMS-App-Builder.git
+      - key: WMS_BUILDER_BASE_BRANCH
+        value: builder
+      - key: WMS_BUILDER_ACCEPT_BRANCH
+        value: builder
+      - key: WMS_BUILDER_WORKDIR
+        value: /var/wms-builder
+      # Asked for when the Blueprint is synced: the Claude API key, and a GitHub token that can read and write the
+      # repository's contents. Neither ever reaches what the agent runs.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WMS_BUILDER_GITHUB_TOKEN
+        sync: false

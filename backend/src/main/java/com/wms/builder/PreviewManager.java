@@ -298,9 +298,13 @@ public class PreviewManager {
     /** The checkout's server through Maven, as a developer runs it, on its own port with the App Builder off. */
     private static Handle spring(Workspace workspace, int port, Path log) throws IOException {
         Files.createDirectories(log.getParent());
-        Process process = new ProcessBuilder(Commands.maven(workspace, "-B", "-q", "spring-boot:run",
+        ProcessBuilder builder = new ProcessBuilder(Commands.maven(workspace, "-B", "-q", "spring-boot:run",
                 "-Dspring-boot.run.arguments=--server.port=" + port + " --wms.builder.enabled=false --wms.demo-data.enabled=true"))
-                .directory(workspace.resolve("backend").toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+                .directory(workspace.resolve("backend").toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+        // A preview runs the change's code: it gets none of this server's secrets, and a database of its own.
+        Workspace.secure(builder.environment(), false);
+        builder.environment().remove("SPRING_PROFILES_ACTIVE");
+        Process process = builder.start();
         return new Handle() {
             @Override
             public boolean isAlive() {

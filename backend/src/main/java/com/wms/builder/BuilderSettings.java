@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
  * @param checks       the agent may run the tests
  * @param previews     a change request's own copy of the WMS can be started on this computer to try it
  * @param previewPorts the ports previews may use, like 8090-8094
+ * @param githubToken  lets git fetch from and push to a GitHub source; none for a local one
  */
 @Component
 public record BuilderSettings(
@@ -30,7 +31,15 @@ public record BuilderSettings(
         @Value("${wms.builder.max-steps:80}") int maxSteps,
         @Value("${wms.builder.checks:true}") boolean checks,
         @Value("${wms.builder.previews:true}") boolean previews,
-        @Value("${wms.builder.preview-ports:8090-8094}") String previewPorts) {
+        @Value("${wms.builder.preview-ports:8090-8094}") String previewPorts,
+        @Value("${wms.builder.github-token:}") String githubToken) {
+
+    /** Keeps the token out of logs and error pages. */
+    @Override
+    public String toString() {
+        return "BuilderSettings[enabled=" + enabled + ", source=" + source + ", baseBranch=" + baseBranch + ", acceptBranch="
+                + acceptBranch + "]";
+    }
 
     int firstPreviewPort() {
         return Integer.parseInt(previewPorts.split("-")[0].strip());

@@ -55,9 +55,42 @@ These steps are yours: they need your accounts and payment details.
    with a user ID and password. Add users under Administration.
 6. **Devices** use the same address with `/rf`, and pack stations `/pack`.
 
+## The App Builder on wms-builder
+
+The App Builder is switched on in **wms-builder** only (`WMS_BUILDER_ENABLED=true` there); in wms-base its page is hidden and
+its API refuses every request. wms-builder runs from [`Dockerfile.builder`](Dockerfile.builder), which adds git, a full Java
+JDK and Node so the agent can work on the code and run its checks, and keeps each change request's copy of the code on a
+10 GB disk.
+
+- Change requests start from `builder` on GitHub. **Accept** merges a change into `builder` and pushes it, which redeploys
+  wms-builder with it: the App Builder is unavailable for a few minutes while it does.
+- **Previews** are off in the cloud: a Render service can't open extra ports for them. Try changes by accepting them into
+  wms-builder, or preview them on your own computer.
+- The agent's builds and checks run code it wrote, so they get none of the service's secrets: not the Claude key, the
+  GitHub token or the database's settings. Only git is given the GitHub token, as a header.
+
+### Setting it up
+
+1. **Claude API key.** At console.anthropic.com › API keys, create a key for wms-builder.
+2. **GitHub token.** At github.com › Settings › Developer settings › Fine-grained tokens, create a token for this
+   repository only, with **Contents: Read and write**. Give it an expiry date and note it.
+3. **Protect `main`.** In the repository's Settings › Branches, add a rule for `main`: require a pull request and passing
+   checks. The token can write to any branch, so this is what keeps the App Builder from changing `main` directly.
+4. **In Render,** once this is on `main` the Blueprint syncs and wms-builder gets the new settings. Render asks for values
+   it hasn't got only when a Blueprint is first created, so open wms-builder › Environment and add `ANTHROPIC_API_KEY` and
+   `WMS_BUILDER_GITHUB_TOKEN` there yourself. Never put them in the repository.
+5. Give people the **Use the App Builder** permission through a role, and developers **See how the App Builder works**
+   too. Administrators have both.
+
+### Size
+
+The agent's checks build and test the WMS beside the running server. On the Standard plan (2 GB) the server keeps 40% of
+the memory and each build or test process a quarter; if wms-builder runs out of memory while the agent runs the checks,
+move it to the Pro plan (4 GB) by changing its `plan:` in `render.yaml`.
+
 ## Costs
 
-With the plans in `render.yaml`: two Standard web services (2 GB memory each, $25 a month each), a Basic 1 GB database
+With the plans in `render.yaml`: two Standard web services (2 GB memory each, $25 a month each), a 10 GB disk for wms-builder (about $2.50 a month), a Basic 1 GB database
 for base and a Basic 256 MB one for builder (about $20 and $6 a month), plus storage at about $0.30 per GB a month and
 the workspace plan. Change `plan:` in `render.yaml` to resize. Check render.com/pricing for current prices.
 
@@ -72,6 +105,11 @@ the workspace plan. Change `plan:` in `render.yaml` to resize. Check render.com/
 | `WMS_DEMO_PIN` | builder | PIN of the demo device users. |
 | `SPRING_FLYWAY_OUT_OF_ORDER` | builder | `true`, for the builder's own migrations. |
 | `WMS_DB_POOL` | both | Most database connections a service opens (10 unless set). |
+| `WMS_BUILDER_ENABLED` | builder | `true` switches the App Builder on. Never set it on wms-base. |
+| `WMS_BUILDER_SOURCE`, `WMS_BUILDER_BASE_BRANCH`, `WMS_BUILDER_ACCEPT_BRANCH` | builder | The repository changes start from, and the branch they start from and are accepted into (`builder`). |
+| `WMS_BUILDER_WORKDIR` | builder | Where change requests' copies of the code are kept: the disk. |
+| `ANTHROPIC_API_KEY` | builder | The Claude API key. Secret. |
+| `WMS_BUILDER_GITHUB_TOKEN` | builder | A token that can read and write the repository's contents. Secret. |
 | `PORT` | both | Set by Render. |
 
 ## Running the image yourself

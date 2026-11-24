@@ -4,5 +4,6 @@
 **/target
 **/dist
 backend/data
+backend/local.properties
 frontend/tsconfig.tsbuildinfo
 *.md

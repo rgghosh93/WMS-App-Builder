@@ -55,3 +55,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t wms .
+      - run: docker build -f Dockerfile.builder -t wms-builder .
+      # The builder image has what the agent needs to work on the code.
+      - run: docker run --rm --entrypoint sh wms-builder -c "git --version && node --version && npm --version && javac -version"
