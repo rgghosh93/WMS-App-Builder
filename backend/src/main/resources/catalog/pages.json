@@ -177,6 +177,7 @@
     "pages": [
       { "id": "users", "title": "Users", "description": "Who can sign in, and with which roles", "route": "/admin/users", "status": "AVAILABLE", "requires": "USERS" },
       { "id": "roles", "title": "Roles", "description": "Roles and permissions", "route": "/admin/roles", "status": "AVAILABLE", "requires": "USERS" },
+      { "id": "app-builder", "title": "App Builder", "description": "Describe a change and have it built", "route": "/builder", "status": "AVAILABLE", "requires": "APP_BUILDER" },
       { "id": "audit-log", "title": "Audit Log", "description": "Who changed what, and when", "route": "/admin/audit-log", "status": "PLANNED" },
       { "id": "label-templates", "title": "Label Templates", "description": "Label and document templates", "route": "/admin/label-templates", "status": "PLANNED" }
     ]

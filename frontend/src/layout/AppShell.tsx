@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { Building2, KeyRound, LogOut, Menu, Warehouse } from 'lucide-react';
 import { useSession } from '../session/SessionContext';
+import { NotificationBell } from '../pages/builder/NotificationBell';
 import { Sidebar } from './Sidebar';
 
 export function AppShell() {
@@ -49,6 +50,7 @@ export function AppShell() {
         )}
         {session && (
           <div className="topbar__user">
+            {session.user.permissions.includes('APP_BUILDER') && <NotificationBell />}
             <span className="topbar__name">{session.user.displayName}</span>
             <button type="button" className="icon-button" aria-label="Change password" title="Change password" onClick={session.changePassword}>
               <KeyRound size={18} aria-hidden="true" />

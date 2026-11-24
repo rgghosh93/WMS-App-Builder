@@ -56,6 +56,13 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- The App Builder's connection to Claude. Only its LLM gateway uses it (com.wms.builder.llm). -->
+        <dependency>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
+            <version>3.11.0</version>
+        </dependency>
+
         <!-- Local dev database (PostgreSQL mode). Production uses PostgreSQL. -->
         <dependency>
             <groupId>com.h2database</groupId>

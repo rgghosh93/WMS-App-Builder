@@ -14,6 +14,8 @@ export type Permission =
   | 'INVENTORY_APPROVE'
   | 'FACILITIES'
   | 'USERS'
+  | 'APP_BUILDER'
+  | 'APP_BUILDER_DEVELOPER'
   | 'DEVICE_NEXT'
   | 'DEVICE_RECEIVE'
   | 'DEVICE_PUTAWAY'

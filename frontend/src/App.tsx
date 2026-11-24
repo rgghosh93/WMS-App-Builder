@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { RolesPage } from './pages/admin/RolesPage';
+import { AppBuilderPage } from './pages/builder/AppBuilderPage';
 import { UsersPage } from './pages/admin/UsersPage';
 import { HomePage } from './pages/HomePage';
 import { AsnDetailPage } from './pages/inbound/AsnDetailPage';
@@ -60,6 +61,8 @@ export function App() {
         <Route path="print/asns/:id/lpn-labels" element={<LpnLabelsPage />} />
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
+          <Route path="builder" element={<AppBuilderPage />} />
+          <Route path="builder/:id" element={<AppBuilderPage />} />
           <Route path="master-data/locations" element={<LocationsPage />} />
           <Route path="master-data/facilities" element={<FacilitiesPage />} />
           <Route path="master-data/owners" element={<OwnersPage />} />

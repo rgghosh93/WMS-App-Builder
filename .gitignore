@@ -18,3 +18,6 @@ backend/data/
 
 # Built frontend packed into the backend (Docker build)
 backend/src/main/resources/static/
+
+# Settings for this machine only, such as the App Builder's API key.
+backend/local.properties
